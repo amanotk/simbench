@@ -88,11 +88,14 @@ SCIBENCH_ENABLE_COPILOT=1 python3 runner/bench.py run sample/copilot.toml demo/p
 You usually do not need `--prompt`; the runner uses a default message. You can also
 set `prompt` or `prompt_file` in the task's `task.toml`.
 
-This runs the OpenCode one-shot session inside Docker by mounting:
+This runs agent sessions in Docker by mounting:
 - the task workdir at `/work`
 - the run metadata (including `spec.md`) at `/run` (read-only)
-- host agent binaries/configs as defined in merged config
+- optional host agent config files as defined in merged config
 - for OpenCode, optional host config `~/.config/opencode/opencode.json`
+- for Claude, optional `~/.claude/settings.json`
+- for Codex, optional `~/.codex/auth.json`
+- for Copilot, optional `~/.copilot/config.json`
 
 ## Notes
 

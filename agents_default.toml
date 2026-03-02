@@ -23,10 +23,6 @@ cmd = "opencode run -m \"$BENCH_MODEL\" --dir \"$BENCH_WORKDIR\" \"$(cat \"$BENC
 [agents.opencode.env]
 OPENCODE_DISABLE_AUTOUPDATE = "1"
 
-[[agents.opencode.bins]]
-host = "opencode"
-container = "/usr/local/bin/opencode"
-
 [[agents.opencode.mounts]]
 host = "~/.local/share/opencode/auth.json"
 container = "/opencode-auth.json"
@@ -50,10 +46,6 @@ pre = [
 ]
 cmd = "claude -p --permission-mode bypassPermissions --tools default --add-dir \"$BENCH_WORKDIR\" --add-dir \"$BENCH_RUN_DIR\" --model \"${BENCH_MODEL##*/}\" \"$(cat \"$BENCH_PROMPT_FILE\")\""
 
-[[agents.claude.bins]]
-host = "claude"
-container = "/usr/local/bin/claude"
-
 [[agents.claude.mounts]]
 host = "~/.claude/settings.json"
 container = "/claude-settings.json"
@@ -61,25 +53,35 @@ mode = "ro"
 optional = true
 
 [agents.codex]
-mode = "host"
+mode = "docker"
 enabled_by_default = false
 default_model = "gpt-5.3-codex"
 pass_env = ["OPENAI_API_KEY"]
-pre = []
+pre = [
+  "mkdir -p \"$HOME/.codex\"",
+  "if [ -f /codex-auth.json ]; then cp /codex-auth.json \"$HOME/.codex/auth.json\"; fi",
+]
 cmd = "codex exec --ephemeral --full-auto --skip-git-repo-check -C \"$BENCH_WORKDIR\" -m \"${BENCH_MODEL##*/}\" \"$(cat \"$BENCH_PROMPT_FILE\")\""
 
-[[agents.codex.bins]]
-host = "codex"
-container = "/usr/local/bin/codex"
+[[agents.codex.mounts]]
+host = "~/.codex/auth.json"
+container = "/codex-auth.json"
+mode = "ro"
+optional = true
 
 [agents.copilot]
-mode = "host"
+mode = "docker"
 enabled_by_default = false
 default_model = "gpt-5.3-codex"
 pass_env = ["GITHUB_TOKEN"]
-pre = []
+pre = [
+  "mkdir -p \"$HOME/.copilot\"",
+  "if [ -f /copilot-config.json ]; then cp /copilot-config.json \"$HOME/.copilot/config.json\"; fi",
+]
 cmd = "copilot --no-ask-user --allow-all-tools --allow-all-paths --model \"${BENCH_MODEL##*/}\" -p \"$(cat \"$BENCH_PROMPT_FILE\")\""
 
-[[agents.copilot.bins]]
-host = "copilot"
-container = "/usr/local/bin/copilot"
+[[agents.copilot.mounts]]
+host = "~/.copilot/config.json"
+container = "/copilot-config.json"
+mode = "ro"
+optional = true

@@ -81,7 +81,7 @@ python3 runner/bench.py sample/opencode.toml <suite>/<task_id> --image scibench:
 
 This is shorthand for `run`. The runner uses the selected TOML to:
 
-- decide which host binaries/config files to mount into the agent container
+- decide which optional host config files to mount into the agent container
 - decide what command to run for that agent
 - choose `default_model`
 
@@ -96,7 +96,7 @@ Enable non-default agents via env vars, for example:
 
 Agents can run in two modes:
 
-- `mode: "docker"` (default): runner mounts host binaries/config into the agent container
+- `mode: "docker"` (default): runner executes agent CLIs in the image and can mount optional host config files
 - `mode: "host"`: runner executes the agent on the host (still evaluates in Docker)
 
 
@@ -150,6 +150,15 @@ OpenCode config file (optional):
 
 - If `~/.config/opencode/opencode.json` exists, it is mounted into the agent
   container and `OPENCODE_CONFIG` points to it.
+
+Other agent local files (sample defaults):
+
+- Claude: if `~/.claude/settings.json` exists, it is mounted and copied to
+  `$HOME/.claude/settings.json` inside the agent container.
+- Codex: if `~/.codex/auth.json` exists, it is mounted and copied to
+  `$HOME/.codex/auth.json` inside the agent container.
+- Copilot: if `~/.copilot/config.json` exists, it is mounted and copied to
+  `$HOME/.copilot/config.json` inside the agent container.
 
 2) Provider environment variables (useful for CI)
 

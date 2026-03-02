@@ -112,6 +112,38 @@ class TestBenchHelpers(unittest.TestCase):
             self.assertIn("BENCH_AGENT=dummy", cmd)
             self.assertIn("BENCH_MODEL=openai/gpt-5.3-codex", cmd)
 
+    def test_run_agent_in_docker_allows_no_bins(self):
+        with tempfile.TemporaryDirectory() as td:
+            workdir = Path(td) / "work"
+            run_dir = Path(td) / "run"
+            workdir.mkdir()
+            run_dir.mkdir()
+            (run_dir / "spec.md").write_text("spec\n", encoding="utf-8")
+            (run_dir / "prompt.txt").write_text("prompt\n", encoding="utf-8")
+
+            agent_cfg = {
+                "name": "dummy",
+                "mounts": [],
+                "pre": [],
+                "cmd": "true",
+            }
+
+            def fake_run(cmd, **_kwargs):
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with mock.patch.object(bench.subprocess, "run", side_effect=fake_run):
+                bench._run_agent_in_docker(
+                    image="scibench:0.1",
+                    workdir=workdir,
+                    run_dir=run_dir,
+                    agent_name="dummy",
+                    agent_cfg=agent_cfg,
+                    model="openai/gpt-5.3-codex",
+                    network="on",
+                    timeout_sec=5,
+                    extra_env=None,
+                )
+
     def test_run_agent_on_host_runs_bash(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)

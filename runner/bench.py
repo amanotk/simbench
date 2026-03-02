@@ -453,8 +453,8 @@ def _run_agent_in_docker(
     ]
 
     bins = agent_cfg.get("bins", [])
-    if not isinstance(bins, list) or not bins:
-        raise ValueError(f"Agent {agent_name!r} missing 'bins' list")
+    if not isinstance(bins, list):
+        raise ValueError(f"Agent {agent_name!r} bins must be a list")
     for b in bins:
         if not isinstance(b, dict):
             raise ValueError(f"Agent {agent_name!r} has invalid bin entry")
