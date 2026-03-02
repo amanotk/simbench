@@ -74,7 +74,7 @@ optional = true
 mode = "docker"
 enabled_by_default = false
 model = "gpt-5.3-codex"
-pass_env = ["GITHUB_TOKEN"]
+pass_env = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
 pre = [
   "mkdir -p \"$HOME/.copilot\"",
   "if [ -f /copilot-config.json ]; then cp /copilot-config.json \"$HOME/.copilot/config.json\"; fi",
