@@ -9,11 +9,12 @@ Cursor/Copilot rules:
 
 Repo map (core):
 - `benchmarks/<suite>/<task_id>/spec.md`: prompt shown to the model
-- `benchmarks/<suite>/<task_id>/task.json`: task metadata for the runner
+- `benchmarks/<suite>/<task_id>/task.toml`: task metadata for the runner
 - `benchmarks/<suite>/<task_id>/workspace/`: template copied into a fresh per-run workdir
 - `benchmarks/<suite>/<task_id>/eval/`: evaluation harness (should be hidden from the model)
-- `runner/bench.py`: CLI (list/prepare/shell/run)
-- `agents.json`: config for running different agent CLIs in Docker
+- `runner/bench.py`: CLI (list/prepare/shell/run/eval)
+- `agents_default.toml`: default multi-agent config (opencode/codex/claude/copilot)
+- `sample/*.toml`: sample single-agent overrides
 - `docker/Dockerfile`: unified toolchain image (Python + C++ + Fortran)
 - `runs/`: run artifacts (gitignored)
 
@@ -30,18 +31,31 @@ Runner basics:
 
 ```bash
 python3 runner/bench.py list
-python3 runner/bench.py prepare demo/py-add-001
-python3 runner/bench.py shell demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py run demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py agent demo/py-add-001 --agent opencode --image scibench:0.1 -m openai/gpt-5.3-codex
-python3 runner/bench.py opencode demo/py-add-001 --image scibench:0.1 -m openai/gpt-5.3-codex
+python3 runner/bench.py prepare sample/opencode.toml demo/py-add-001
+python3 runner/bench.py shell sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py eval demo/py-add-001 --workdir /path/to/workdir --image scibench:0.1
+```
+
+Agent defaults:
+- Model defaults come from merged config (`agents_default.toml` + override TOML).
+- Agent enable uses per-agent env vars (opencode enabled by default), e.g.
+  - `SCIBENCH_ENABLE_CLAUDE=1`
+  - `SCIBENCH_ENABLE_CODEX=1`
+  - `SCIBENCH_ENABLE_COPILOT=1`
+
+Verbose runner output:
+
+```bash
+python3 runner/bench.py --verbose run sample/opencode.toml demo/py-add-001 --image scibench:0.1
 ```
 
 Network tracks:
 
 ```bash
-python3 runner/bench.py run demo/py-add-001 --network on
-python3 runner/bench.py run demo/py-add-001 --network off
+python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --network on
+python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --network off
 ```
 
 Public tests (inside an agent shell; these live under `workspace/tests/`):
@@ -53,10 +67,11 @@ pytest -q
 Run tests via the runner's shell command (no need to manually `cd`):
 
 ```bash
-python3 runner/bench.py shell demo/py-add-001 --image scibench:0.1 -- pytest -q
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-add-001 -- pytest -q
 ```
 
-Note: use `--` before a command that has flags (e.g. `-q`, `-k`).
+Note: place shell options (like `--image`) before `agents task`, and use `--`
+before a command that has flags (e.g. `-q`, `-k`).
 
 Run a single test (preferred when iterating):
 
@@ -73,12 +88,13 @@ pytest -q -k float
 Authoritative evaluation (hidden tests):
 
 ```bash
-python3 runner/bench.py run <suite>/<task_id>
+python3 runner/bench.py run sample/opencode.toml <suite>/<task_id>
+python3 runner/bench.py eval <suite>/<task_id> --workdir /path/to/workdir
 ```
 
 There is no "run one hidden test" CLI yet. While authoring tasks, you can
 temporarily narrow evaluation by editing `benchmarks/<suite>/<task_id>/eval/run.sh`
-or setting `eval_cmd` in `benchmarks/<suite>/<task_id>/task.json`.
+or setting `eval_cmd` in `benchmarks/<suite>/<task_id>/task.toml`.
 
 Lint (not enforced yet):
 
@@ -86,14 +102,26 @@ Lint (not enforced yet):
 python3 -m py_compile runner/bench.py
 ```
 
+Runner tests:
+
+```bash
+python3 -m unittest -q tests.test_runner_bench
+```
+
+Run a single test:
+
+```bash
+python3 -m unittest -q tests.test_runner_bench.TestBenchHelpers.test_expand_path
+```
+
 Timeouts:
-- `--timeout-sec` is used as the per-phase timeout for both the OpenCode one-shot and the eval harness.
+- `--timeout-sec` is used as the per-phase timeout for both the agent one-shot and the eval harness.
 
 
 ## Common Workflows
 
 Author a new task (manual, v0):
-- Create `benchmarks/<suite>/<task_id>/` with `spec.md`, `task.json`, `workspace/`, `eval/`.
+- Create `benchmarks/<suite>/<task_id>/` with `spec.md`, `task.toml`, `workspace/`, `eval/`.
 - Ensure `eval/run.sh` is executable.
 - Ensure `eval/run.sh` writes `/work/result.json`.
 
@@ -103,10 +131,14 @@ Debug a task locally: use `bench.py shell` to iterate, then `bench.py run` to sc
 ## Docker / Sandbox Notes
 
 - The runner mounts the task workspace at `/work` (read/write).
-- The runner mounts the eval harness at `/eval` (read-only) during `run`.
-- The `agent`/`opencode` commands run the agent inside Docker by bind-mounting host binaries/configs as defined in `agents.json`.
+- The runner mounts the eval harness at `/eval` (read-only) during `run`/`eval`.
+- The `run`/`shell`/`prepare` commands use the selected agent TOML merged over `agents_default.toml`.
 - Use `--network off` for an offline track (Docker `--network none`).
 - Keep benchmark workspaces free of secrets; with network enabled, assume the agent can exfiltrate anything it can read.
+
+Runner logs:
+- `runs/.../logs/agent.docker_cmd.txt` or `runs/.../logs/agent.host_cmd.txt`: agent command line
+- `runs/.../logs/eval.docker_cmd.txt`: eval command line
 
 
 ## Result Format (v0)
@@ -131,8 +163,8 @@ Python (runner, `runner/`):
 - Naming: `cmd_*` for CLI subcommands; `_helper` for internal helpers.
 - Errors/exit codes: stderr for user-facing errors; `2` usage/config, `1` runtime, `0` OK.
 
-Task metadata (`task.json`):
-- JSON, 2-space indent, stable semantics.
+Task metadata (`task.toml`):
+- TOML, stable semantics.
 - Suggested keys: `id`, `suite`, `language` (python|cpp|fortran), `time_limit_sec`, `eval_cmd`.
 - Optional keys: `prompt` (string) or `prompt_file` (path relative to the task dir).
 

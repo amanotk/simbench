@@ -17,7 +17,7 @@ current v0 runner.
 A task lives under `benchmarks/<suite>/<task_id>/`:
 
 - `spec.md`: problem statement shown to the model
-- `task.json`: metadata (e.g. `eval_cmd`, `time_limit_sec`, optional `prompt`)
+- `task.toml`: metadata (e.g. `eval_cmd`, `time_limit_sec`, optional `prompt`)
 - `workspace/`: template copied into a per-run workdir (solver edits here)
 - `eval/`: evaluation harness (treated as hidden from the solver)
   - `eval/run.sh`: entrypoint; writes `/work/result.json`
@@ -30,7 +30,9 @@ Each run creates a directory under `runs/<run_id>/<suite>/<task_id>/`:
 
 - `workdir/`: the isolated workspace copy that is edited and evaluated
 - `logs/`: captured stdout/stderr/exit codes
-- `spec.md`, `task.json`: copies of the task inputs used for traceability
+- `logs/agent.docker_cmd.txt` or `logs/agent.host_cmd.txt`: the agent command line
+- `logs/eval.docker_cmd.txt`: the eval command line
+- `spec.md`, `task.toml`: copies of the task inputs used for traceability
 - `result.json`: the evaluation result (copied from `workdir/result.json`)
 
 `runs/` is gitignored.
@@ -38,85 +40,79 @@ Each run creates a directory under `runs/<run_id>/<suite>/<task_id>/`:
 
 ## Phase Overview
 
-There are two Docker phases for a benchmark run:
+There are two phases for a benchmark run:
 
 1) Agent phase: model/agent modifies `workdir/` and can execute commands.
 2) Eval phase: hidden harness evaluates `workdir/` and writes `result.json`.
+
+The agent phase may run in Docker or on the host depending on the selected
+agents TOML (`mode = "docker"` or `"host"`).
 
 The key property is that `benchmarks/.../eval/` is never mounted into the agent
 container.
 
 
-## `bench.py run` (eval-only)
+## `bench.py run` (agent solve + eval)
 
 Command:
 
 ```bash
-python3 runner/bench.py run <suite>/<task_id> --image scibench:0.1
+python3 runner/bench.py run sample/opencode.toml <suite>/<task_id> --image scibench:0.1
 ```
 
 What happens:
 
 - A fresh `workdir/` is created by copying `benchmarks/.../workspace/`.
-- A Docker container is started from `--image`.
-- The runner mounts:
-  - `workdir/` to `/work` (read/write)
-  - `benchmarks/.../eval/` to `/eval` (read-only)
-- The runner executes `eval_cmd` from `task.json` (working directory `/work`).
+- The runner loads and merges agent settings from:
+  - positional single-agent override TOML, and
+  - `agents_default.toml`.
+- Agent phase runs first (Docker or host mode according to merged config).
+- Eval phase then runs in Docker using hidden harness mounted at `/eval`.
 - The harness writes `/work/result.json` and the runner copies it to `runs/.../result.json`.
 
-This command does not run any model; it only evaluates the template workspace.
 
-
-## `bench.py opencode` (one-shot agent + eval)
+## Positional shorthand
 
 Command:
 
 ```bash
-python3 runner/bench.py opencode <suite>/<task_id> --image scibench:0.1 -m openai/gpt-5.3-codex
+python3 runner/bench.py sample/opencode.toml <suite>/<task_id> --image scibench:0.1
+```
+
+This is shorthand for `run`. The runner uses the selected TOML to:
+
+- decide which host binaries/config files to mount into the agent container
+- decide what command to run for that agent
+- choose `default_model`
+
+To run different agents, prepare different TOML files and pass one as the first
+positional argument. Enable non-default agents via env vars.
+
+Enable non-default agents via env vars, for example:
+
+- `SCIBENCH_ENABLE_CLAUDE=1`
+- `SCIBENCH_ENABLE_CODEX=1`
+- `SCIBENCH_ENABLE_COPILOT=1`
+
+Agents can run in two modes:
+
+- `mode: "docker"` (default): runner mounts host binaries/config into the agent container
+- `mode: "host"`: runner executes the agent on the host (still evaluates in Docker)
+
+
+## `bench.py eval` (eval-only)
+
+Command:
+
+```bash
+python3 runner/bench.py eval <suite>/<task_id> --workdir /path/to/workdir --image scibench:0.1
 ```
 
 What happens:
 
-- A fresh `workdir/` is created.
-- The one-shot message is resolved in this order:
-  1) CLI `--prompt`
-  2) `task.json` `prompt_file`
-  3) `task.json` `prompt`
-  4) runner default prompt
-- The resolved message is written to `runs/.../prompt.txt`.
-
-Agent phase (Docker):
-
-- A Docker container is started from `--image`.
-- The runner loads `agents.json` and uses the `opencode` entry to decide what
-  host binaries/config files to mount and what command to run.
-- The runner always mounts:
-  - `workdir/` to `/work` (read/write)
-  - `runs/.../` to `/run` (read-only; contains `spec.md` and `prompt.txt`)
-- Then the configured `opencode` command is executed inside the container.
-
-Eval phase (Docker):
-
-- A separate Docker container runs the hidden harness (`eval/run.sh`).
-- `result.json` is copied into `runs/.../result.json`.
-
-
-## `bench.py agent` (config-driven agent + eval)
-
-Command:
-
-```bash
-python3 runner/bench.py agent <suite>/<task_id> --agent opencode --image scibench:0.1 -m openai/gpt-5.3-codex
-```
-
-This is the generic form of the same flow. The runner uses `agents.json` to:
-
-- decide which host binaries/config files to mount into the agent container
-- decide what command to run for that agent
-
-To enable additional agents (e.g. `claude-code`, `codex`, `gh-copilot`), edit
-`agents.json` and set `enabled: true` for the agent entry.
+- No agent is run.
+- The runner evaluates the provided `--workdir` using hidden harness for task.
+- Results and logs are still written to a fresh run directory.
 
 
 ## Network Modes
@@ -135,7 +131,7 @@ runtime from your host environment.
 
 ### How credentials get into the agent container
 
-The `bench.py opencode` command supports two mechanisms:
+For the sample OpenCode config (`sample/opencode.toml`), credential handling uses:
 
 1) OpenCode auth file (recommended for local dev)
 
@@ -149,6 +145,11 @@ This is created by:
 ```bash
 opencode auth login
 ```
+
+OpenCode config file (optional):
+
+- If `~/.config/opencode/opencode.json` exists, it is mounted into the agent
+  container and `OPENCODE_CONFIG` points to it.
 
 2) Provider environment variables (useful for CI)
 
@@ -183,3 +184,13 @@ Minimum fields:
 ```
 
 Optional `metrics` may be added for timings, accuracy, etc.
+
+
+## Verbose Mode
+
+Pass `--verbose` to print internal runner actions (run paths, resolved commands)
+to stderr:
+
+```bash
+python3 runner/bench.py --verbose run sample/opencode.toml <suite>/<task_id>
+```

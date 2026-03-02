@@ -1,0 +1,8 @@
+version = 1
+name = "opencode"
+
+# This file overrides entries from agents_default.toml for a single agent.
+# If omitted, values are inherited from [agents.opencode] in agents_default.toml.
+
+# Example override:
+# default_model = "openai/gpt-5.3-codex"

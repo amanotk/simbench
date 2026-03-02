@@ -1,0 +1,76 @@
+version = 1
+
+[agents.opencode]
+mode = "docker"
+enabled_by_default = true
+default_model = "openai/gpt-5.3-codex"
+pass_env = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "OPENROUTER_API_KEY",
+  "GITHUB_TOKEN",
+  "AZURE_OPENAI_API_KEY",
+  "AZURE_OPENAI_ENDPOINT",
+  "AZURE_OPENAI_API_VERSION",
+]
+pre = [
+  "mkdir -p \"$HOME/.local/share/opencode\"",
+  "if [ -f /opencode-auth.json ]; then cp /opencode-auth.json \"$HOME/.local/share/opencode/auth.json\"; fi",
+  "if [ -f /opencode-config.json ]; then export OPENCODE_CONFIG=/opencode-config.json; fi",
+]
+cmd = "opencode run -m \"$BENCH_MODEL\" --dir \"$BENCH_WORKDIR\" \"$(cat \\\"$BENCH_PROMPT_FILE\\\")\" -f \"$BENCH_SPEC_FILE\""
+
+[agents.opencode.env]
+OPENCODE_DISABLE_AUTOUPDATE = "1"
+
+[[agents.opencode.bins]]
+host = "opencode"
+container = "/usr/local/bin/opencode"
+
+[[agents.opencode.mounts]]
+host = "~/.local/share/opencode/auth.json"
+container = "/opencode-auth.json"
+mode = "ro"
+optional = true
+
+[[agents.opencode.mounts]]
+host = "~/.config/opencode/opencode.json"
+container = "/opencode-config.json"
+mode = "ro"
+optional = true
+
+[agents.claude]
+mode = "docker"
+enabled_by_default = false
+default_model = "claude-sonnet-4-6"
+pass_env = ["ANTHROPIC_API_KEY"]
+pre = []
+cmd = "claude -p --permission-mode bypassPermissions --tools default --add-dir \"$BENCH_WORKDIR\" --add-dir \"$BENCH_RUN_DIR\" --model \"${BENCH_MODEL##*/}\" \"$(cat \\\"$BENCH_PROMPT_FILE\\\")\""
+
+[[agents.claude.bins]]
+host = "claude"
+container = "/usr/local/bin/claude"
+
+[agents.codex]
+mode = "host"
+enabled_by_default = false
+default_model = "gpt-5.3-codex"
+pass_env = ["OPENAI_API_KEY"]
+pre = []
+cmd = "codex exec --ephemeral --full-auto --skip-git-repo-check -C \"$BENCH_WORKDIR\" -m \"${BENCH_MODEL##*/}\" \"$(cat \\\"$BENCH_PROMPT_FILE\\\")\""
+
+[[agents.codex.bins]]
+host = "codex"
+container = "/usr/local/bin/codex"
+
+[agents.copilot]
+mode = "host"
+enabled_by_default = false
+default_model = "gpt-5.3-codex"
+pass_env = ["GITHUB_TOKEN"]
+pre = []
+cmd = "copilot --no-ask-user --allow-all-tools --allow-all-paths --model \"${BENCH_MODEL##*/}\" -p \"$(cat \\\"$BENCH_PROMPT_FILE\\\")\""
+
+[[agents.copilot.bins]]
+host = "copilot"
+container = "/usr/local/bin/copilot"

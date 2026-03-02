@@ -5,6 +5,7 @@ import datetime as _dt
 import json
 import os
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -12,42 +13,143 @@ from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    import tomllib as _toml_lib  # type: ignore[attr-defined]
+except ModuleNotFoundError:  # pragma: no cover - fallback for Python <3.11
+    try:
+        import tomli as _toml_lib  # type: ignore[no-redef]
+    except ModuleNotFoundError:  # pragma: no cover
+        _toml_lib = None  # type: ignore[assignment]
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCH_ROOT = REPO_ROOT / "benchmarks"
 RUNS_ROOT = REPO_ROOT / "runs"
-AGENTS_CONFIG_DEFAULT = REPO_ROOT / "agents.json"
+AGENTS_DEFAULT_PATH = REPO_ROOT / "agents_default.toml"
+
+
+def _vprint(enabled: bool, msg: str) -> None:
+    if enabled:
+        print(msg, file=sys.stderr)
+
+
+def _redacted_cmd(cmd: list[str]) -> list[str]:
+    out: list[str] = []
+    redact_next_env = False
+    for tok in cmd:
+        if redact_next_env:
+            if "=" in tok:
+                k, _v = tok.split("=", 1)
+                out.append(f"{k}=<redacted>")
+            else:
+                out.append(tok)
+            redact_next_env = False
+            continue
+
+        out.append(tok)
+        if tok == "-e":
+            redact_next_env = True
+    return out
+
+
+def _cmd_str(cmd: list[str]) -> str:
+    # Render a shell-ish command line for logs.
+    return shlex.join(_redacted_cmd(cmd))
 
 
 def _expand_path(s: str) -> str:
     return os.path.expandvars(os.path.expanduser(s))
 
 
-def _load_agents_config(path: Path) -> dict[str, Any]:
+def _is_env_true(name: str) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return False
+    return v.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _agent_enable_env_key(name: str) -> str:
+    slug = "".join(ch if ch.isalnum() else "_" for ch in name).upper()
+    return f"SCIBENCH_ENABLE_{slug}"
+
+
+def _resolve_input_toml_path(path: Path) -> Path:
     p = Path(_expand_path(str(path)))
     if not p.is_absolute():
         p = (REPO_ROOT / p).resolve()
+    return p
+
+
+def _load_toml(path: Path, *, kind: str) -> dict[str, Any]:
+    p = _resolve_input_toml_path(path)
     if not p.exists():
-        raise FileNotFoundError(f"agents config not found: {p}")
+        raise FileNotFoundError(f"{kind} not found: {p}")
 
-    data = json.loads(p.read_text(encoding="utf-8"))
-    if int(data.get("version", 0)) != 1:
-        raise ValueError(f"Unsupported agents config version: {data.get('version')}")
-    agents = data.get("agents")
-    if not isinstance(agents, dict):
-        raise ValueError("agents config missing top-level 'agents' object")
-    return agents
+    if p.suffix.lower() != ".toml":
+        raise ValueError(f"{kind} must be TOML: {p}")
 
-
-def _get_agent_cfg(agents: dict[str, Any], name: str) -> dict[str, Any]:
-    cfg = agents.get(name)
-    if not isinstance(cfg, dict):
-        raise KeyError(f"Unknown agent: {name}")
-    if cfg.get("enabled", True) is False:
-        raise ValueError(
-            f"Agent {name!r} is disabled in agents.json; set enabled=true to use it"
+    if _toml_lib is None:
+        raise RuntimeError(
+            "TOML parser unavailable (need Python 3.11+ or install tomli)"
         )
-    return cfg
+
+    data = _toml_lib.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{kind} root must be a table")
+    return data
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _load_agent_config(path: Path) -> dict[str, Any]:
+    override = _load_toml(path, kind="agent config")
+    if int(override.get("version", 0)) != 1:
+        raise ValueError(f"Unsupported agent config version: {override.get('version')}")
+
+    name = str(override.get("name", "")).strip()
+    if not name:
+        raise ValueError("agent config missing required 'name'")
+
+    defaults = _load_toml(AGENTS_DEFAULT_PATH, kind="agents default config")
+    if int(defaults.get("version", 0)) != 1:
+        raise ValueError(
+            f"Unsupported agents default config version: {defaults.get('version')}"
+        )
+    agents = defaults.get("agents")
+    if not isinstance(agents, dict):
+        raise ValueError("agents default config missing [agents] table")
+
+    base = agents.get(name)
+    if not isinstance(base, dict):
+        raise ValueError(f"Agent {name!r} not found in agents_default.toml")
+
+    filtered = {k: v for k, v in override.items() if k not in {"version", "name"}}
+    merged = _deep_merge(base, filtered)
+    merged["name"] = name
+    return merged
+
+
+def _is_agent_enabled(cfg: dict[str, Any]) -> tuple[bool, str]:
+    name = str(cfg.get("name", "")).strip()
+    if not name:
+        return False, "agent config missing required 'name'"
+
+    enable_env = _agent_enable_env_key(name)
+    enabled_by_default = bool(cfg.get("enabled_by_default", name == "opencode"))
+    enabled = enabled_by_default or _is_env_true(enable_env)
+    if not enabled:
+        return False, (
+            f"Agent {name!r} is disabled by default; export {enable_env}=1 to enable"
+        )
+    return True, ""
 
 
 def _resolve_host_executable(spec: str) -> Path:
@@ -70,7 +172,7 @@ class Task:
     task_id: str
     path: Path
     spec_path: Path
-    task_json_path: Path
+    task_toml_path: Path
     workspace_tpl: Path
     eval_dir: Path
     meta: dict
@@ -87,26 +189,30 @@ def _coerce_text(v: object) -> str:
 def _load_task(suite: str, task_id: str) -> Task:
     task_path = BENCH_ROOT / suite / task_id
     spec_path = task_path / "spec.md"
-    task_json_path = task_path / "task.json"
+    task_toml_path = task_path / "task.toml"
     workspace_tpl = task_path / "workspace"
     eval_dir = task_path / "eval"
 
     missing = [
         p
-        for p in [spec_path, task_json_path, workspace_tpl, eval_dir]
+        for p in [spec_path, task_toml_path, workspace_tpl, eval_dir]
         if not p.exists()
     ]
     if missing:
         msg = "Task is missing required paths:\n" + "\n".join(f"- {p}" for p in missing)
         raise FileNotFoundError(msg)
 
-    meta: dict[str, Any] = json.loads(task_json_path.read_text(encoding="utf-8"))
+    if _toml_lib is None:
+        raise RuntimeError(
+            "TOML parser unavailable (need Python 3.11+ or install tomli)"
+        )
+    meta: dict[str, Any] = _toml_lib.loads(task_toml_path.read_text(encoding="utf-8"))
     return Task(
         suite=suite,
         task_id=task_id,
         path=task_path,
         spec_path=spec_path,
-        task_json_path=task_json_path,
+        task_toml_path=task_toml_path,
         workspace_tpl=workspace_tpl,
         eval_dir=eval_dir,
         meta=meta,
@@ -118,7 +224,7 @@ def _iter_tasks():
         return
     for suite_dir in sorted([p for p in BENCH_ROOT.iterdir() if p.is_dir()]):
         for task_dir in sorted([p for p in suite_dir.iterdir() if p.is_dir()]):
-            if (task_dir / "spec.md").exists() and (task_dir / "task.json").exists():
+            if (task_dir / "spec.md").exists() and (task_dir / "task.toml").exists():
                 yield (suite_dir.name, task_dir.name)
 
 
@@ -128,10 +234,24 @@ def cmd_list(_args: argparse.Namespace) -> int:
     return 0
 
 
-def _prepare_run_dir(*, task: Task, run_id: str) -> tuple[Path, Path, Path]:
-    run_dir = RUNS_ROOT / run_id / task.suite / task.task_id
+def _resolve_result_dir(*, task: Task, run_id: str, result_dir: str) -> Path:
+    if result_dir.strip():
+        p = Path(_expand_path(result_dir))
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        return p
+    return RUNS_ROOT / run_id / task.suite / task.task_id
+
+
+def _prepare_run_dir(
+    *, task: Task, run_id: str, result_dir: str = ""
+) -> tuple[Path, Path, Path]:
+    run_dir = _resolve_result_dir(task=task, run_id=run_id, result_dir=result_dir)
     workdir = run_dir / "workdir"
     logs_dir = run_dir / "logs"
+
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise FileExistsError(f"result_dir already exists and is not empty: {run_dir}")
 
     workdir.parent.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -143,10 +263,24 @@ def _prepare_run_dir(*, task: Task, run_id: str) -> tuple[Path, Path, Path]:
     (run_dir / "spec.md").write_text(
         task.spec_path.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    (run_dir / "task.json").write_text(
-        task.task_json_path.read_text(encoding="utf-8"), encoding="utf-8"
+    (run_dir / "task.toml").write_text(
+        task.task_toml_path.read_text(encoding="utf-8"), encoding="utf-8"
     )
     return run_dir, workdir, logs_dir
+
+
+def _prepare_eval_result_dir(
+    *, task: Task, run_id: str, result_dir: str = ""
+) -> tuple[Path, Path]:
+    run_dir = _resolve_result_dir(task=task, run_id=run_id, result_dir=result_dir)
+    logs_dir = run_dir / "logs"
+
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise FileExistsError(f"result_dir already exists and is not empty: {run_dir}")
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir, logs_dir
 
 
 def _gen_run_id() -> str:
@@ -163,6 +297,8 @@ def _run_docker_eval(
     network: str,
     timeout_sec: int,
     extra_env: dict[str, str] | None = None,
+    verbose: bool = False,
+    cmd_log_path: Path | None = None,
 ) -> subprocess.CompletedProcess:
     uid = os.getuid() if hasattr(os, "getuid") else 1000
     gid = os.getgid() if hasattr(os, "getgid") else 1000
@@ -205,6 +341,10 @@ def _run_docker_eval(
 
     docker_cmd += [image, "bash", "-lc", eval_cmd]
 
+    if cmd_log_path is not None:
+        cmd_log_path.write_text(_cmd_str(docker_cmd) + "\n", encoding="utf-8")
+    _vprint(verbose, f"[eval] {_cmd_str(docker_cmd)}")
+
     return subprocess.run(
         docker_cmd,
         text=True,
@@ -224,7 +364,6 @@ def _run_docker_shell(
         "docker",
         "run",
         "--rm",
-        "-it",
         "-u",
         f"{uid}:{gid}",
         "-e",
@@ -251,6 +390,9 @@ def _run_docker_shell(
     else:
         raise ValueError("network must be 'on' or 'off'")
 
+    if cmd == ["bash"]:
+        docker_cmd += ["-it"]
+
     docker_cmd += [image] + cmd
     return subprocess.call(docker_cmd)
 
@@ -266,6 +408,8 @@ def _run_agent_in_docker(
     network: str,
     timeout_sec: int,
     extra_env: dict[str, str] | None = None,
+    verbose: bool = False,
+    cmd_log_path: Path | None = None,
 ) -> subprocess.CompletedProcess:
     uid = os.getuid() if hasattr(os, "getuid") else 1000
     gid = os.getgid() if hasattr(os, "getgid") else 1000
@@ -292,6 +436,14 @@ def _run_agent_in_docker(
         f"BENCH_AGENT={agent_name}",
         "-e",
         f"BENCH_MODEL={model}",
+        "-e",
+        "BENCH_WORKDIR=/work",
+        "-e",
+        "BENCH_RUN_DIR=/run",
+        "-e",
+        "BENCH_PROMPT_FILE=/run/prompt.txt",
+        "-e",
+        "BENCH_SPEC_FILE=/run/spec.md",
         "-v",
         f"{str(workdir)}:/work:rw",
         "-v",
@@ -364,10 +516,16 @@ def _run_agent_in_docker(
         raise ValueError(f"Agent {agent_name!r} pre must be a list")
 
     inner_parts: list[str] = []
+    inner_parts.append('test -f "$BENCH_PROMPT_FILE"')
+    inner_parts.append('test -f "$BENCH_SPEC_FILE"')
     for part in pre:
         inner_parts.append(str(part))
     inner_parts.append(cmd)
     docker_cmd += [image, "bash", "-lc", " && ".join(inner_parts)]
+
+    if cmd_log_path is not None:
+        cmd_log_path.write_text(_cmd_str(docker_cmd) + "\n", encoding="utf-8")
+    _vprint(verbose, f"[agent:{agent_name}] {_cmd_str(docker_cmd)}")
 
     return subprocess.run(
         docker_cmd,
@@ -378,7 +536,89 @@ def _run_agent_in_docker(
     )
 
 
+def _run_agent_on_host(
+    *,
+    workdir: Path,
+    run_dir: Path,
+    agent_name: str,
+    agent_cfg: dict[str, Any],
+    model: str,
+    timeout_sec: int,
+    extra_env: dict[str, str] | None = None,
+    verbose: bool = False,
+    cmd_log_path: Path | None = None,
+) -> subprocess.CompletedProcess:
+    # Validate that declared executables exist on PATH.
+    bins = agent_cfg.get("bins", [])
+    if not isinstance(bins, list) or not bins:
+        raise ValueError(f"Agent {agent_name!r} missing 'bins' list")
+    for b in bins:
+        if not isinstance(b, dict):
+            raise ValueError(f"Agent {agent_name!r} has invalid bin entry")
+        host = str(b.get("host", "")).strip()
+        if not host:
+            raise ValueError(f"Agent {agent_name!r} bin entries require host")
+        _resolve_host_executable(host)
+
+    env = dict(os.environ)
+    env.update(
+        {
+            "BENCH_AGENT": agent_name,
+            "BENCH_MODEL": model,
+            "BENCH_WORKDIR": str(workdir),
+            "BENCH_RUN_DIR": str(run_dir),
+            "BENCH_PROMPT_FILE": str(run_dir / "prompt.txt"),
+            "BENCH_SPEC_FILE": str(run_dir / "spec.md"),
+        }
+    )
+
+    env_kv = agent_cfg.get("env", {})
+    if env_kv:
+        if not isinstance(env_kv, dict):
+            raise ValueError(f"Agent {agent_name!r} env must be an object")
+        for k, v in env_kv.items():
+            env[str(k)] = str(v)
+
+    if extra_env:
+        env.update(extra_env)
+
+    pre = agent_cfg.get("pre", [])
+    cmd = str(agent_cfg.get("cmd", "")).strip()
+    if not cmd:
+        raise ValueError(f"Agent {agent_name!r} missing 'cmd'")
+    if pre and not isinstance(pre, list):
+        raise ValueError(f"Agent {agent_name!r} pre must be a list")
+
+    parts: list[str] = []
+    parts.append('test -f "$BENCH_PROMPT_FILE"')
+    parts.append('test -f "$BENCH_SPEC_FILE"')
+    for part in pre:
+        parts.append(str(part))
+    parts.append(cmd)
+
+    # Run under bash for consistent quoting/expansion.
+    cmdline = ["bash", "-lc", " && ".join(parts)]
+    if cmd_log_path is not None:
+        cmd_log_path.write_text(_cmd_str(cmdline) + "\n", encoding="utf-8")
+    _vprint(verbose, f"[agent:{agent_name}:host] {_cmd_str(cmdline)}")
+
+    return subprocess.run(
+        cmdline,
+        cwd=workdir,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout_sec,
+    )
+
+
 def cmd_run(args: argparse.Namespace) -> int:
+    # Full benchmark run: agent solve + authoritative eval.
+    return _cmd_agent_common(args=args)
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
     if "/" not in args.task:
         print("Task must be in the form <suite>/<task_id>", file=sys.stderr)
         return 2
@@ -388,13 +628,44 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     eval_cmd = str(task.meta.get("eval_cmd", ""))
     if not eval_cmd:
-        print(f"Missing eval_cmd in {task.task_json_path}", file=sys.stderr)
+        print(f"Missing eval_cmd in {task.task_toml_path}", file=sys.stderr)
         return 2
 
     timeout_sec = int(task.meta.get("time_limit_sec", args.timeout_sec))
 
     run_id = args.run_id or _gen_run_id()
-    run_dir, workdir, logs_dir = _prepare_run_dir(task=task, run_id=run_id)
+    try:
+        run_dir, logs_dir = _prepare_eval_result_dir(
+            task=task,
+            run_id=run_id,
+            result_dir=args.result_dir,
+        )
+    except FileExistsError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    workdir = Path(_expand_path(args.workdir))
+    if not workdir.is_absolute():
+        workdir = (Path.cwd() / workdir).resolve()
+    if not workdir.exists() or not workdir.is_dir():
+        print(f"workdir not found or not a directory: {workdir}", file=sys.stderr)
+        return 2
+
+    (run_dir / "spec.md").write_text(
+        task.spec_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (run_dir / "task.toml").write_text(
+        task.task_toml_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    _vprint(args.verbose, f"run_id={run_id}")
+    _vprint(args.verbose, f"run_dir={run_dir}")
+    _vprint(args.verbose, f"workdir={workdir}")
+    _vprint(args.verbose, f"task={suite}/{task_id}")
+    _vprint(
+        args.verbose,
+        f"image={args.image} network={args.network} timeout_sec={timeout_sec}",
+    )
 
     try:
         proc = _run_docker_eval(
@@ -404,6 +675,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             eval_cmd=eval_cmd,
             network=args.network,
             timeout_sec=timeout_sec,
+            verbose=args.verbose,
+            cmd_log_path=logs_dir / "eval.docker_cmd.txt",
         )
     except FileNotFoundError as e:
         print(f"Failed to run docker: {e}", file=sys.stderr)
@@ -449,8 +722,32 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         return 2
     suite, task_id = args.task.split("/", 1)
     task = _load_task(suite, task_id)
+
+    try:
+        agent_cfg = _load_agent_config(Path(str(args.agents)))
+    except Exception as e:
+        print(f"Failed to load agent config: {e}", file=sys.stderr)
+        return 2
+
+    enabled, reason = _is_agent_enabled(agent_cfg)
+    if not enabled:
+        print(f"Failed to load agent config: {reason}", file=sys.stderr)
+        return 2
+
     run_id = args.run_id or _gen_run_id()
-    run_dir, workdir, _logs_dir = _prepare_run_dir(task=task, run_id=run_id)
+    try:
+        run_dir, workdir, _logs_dir = _prepare_run_dir(
+            task=task,
+            run_id=run_id,
+            result_dir=args.result_dir,
+        )
+    except FileExistsError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    agent_cfg_path = _resolve_input_toml_path(Path(str(args.agents)))
+    (run_dir / "agent.toml").write_text(
+        agent_cfg_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
     print(str(workdir))
     print(str(run_dir))
     return 0
@@ -462,8 +759,32 @@ def cmd_shell(args: argparse.Namespace) -> int:
         return 2
     suite, task_id = args.task.split("/", 1)
     task = _load_task(suite, task_id)
+
+    try:
+        agent_cfg = _load_agent_config(Path(str(args.agents)))
+    except Exception as e:
+        print(f"Failed to load agent config: {e}", file=sys.stderr)
+        return 2
+
+    enabled, reason = _is_agent_enabled(agent_cfg)
+    if not enabled:
+        print(f"Failed to load agent config: {reason}", file=sys.stderr)
+        return 2
+
     run_id = args.run_id or _gen_run_id()
-    _run_dir, workdir, _logs_dir = _prepare_run_dir(task=task, run_id=run_id)
+    try:
+        run_dir, workdir, _logs_dir = _prepare_run_dir(
+            task=task,
+            run_id=run_id,
+            result_dir=args.result_dir,
+        )
+    except FileExistsError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    agent_cfg_path = _resolve_input_toml_path(Path(str(args.agents)))
+    (run_dir / "agent.toml").write_text(
+        agent_cfg_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
     cmd = args.cmd if args.cmd else ["bash"]
     try:
@@ -478,16 +799,7 @@ def cmd_shell(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_opencode(args: argparse.Namespace) -> int:
-    # Back-compat alias for `bench agent --agent opencode`.
-    return _cmd_agent_common(args=args, agent_name="opencode")
-
-
-def cmd_agent(args: argparse.Namespace) -> int:
-    return _cmd_agent_common(args=args, agent_name=args.agent)
-
-
-def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
+def _cmd_agent_common(*, args: argparse.Namespace) -> int:
     if "/" not in args.task:
         print("Task must be in the form <suite>/<task_id>", file=sys.stderr)
         return 2
@@ -497,12 +809,69 @@ def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
 
     eval_cmd = str(task.meta.get("eval_cmd", ""))
     if not eval_cmd:
-        print(f"Missing eval_cmd in {task.task_json_path}", file=sys.stderr)
+        print(f"Missing eval_cmd in {task.task_toml_path}", file=sys.stderr)
         return 2
 
     timeout_sec = int(task.meta.get("time_limit_sec", args.timeout_sec))
     run_id = args.run_id or _gen_run_id()
-    run_dir, workdir, logs_dir = _prepare_run_dir(task=task, run_id=run_id)
+    try:
+        run_dir, workdir, logs_dir = _prepare_run_dir(
+            task=task,
+            run_id=run_id,
+            result_dir=args.result_dir,
+        )
+    except FileExistsError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    agents_config_path = Path(str(args.agents))
+    try:
+        agent_cfg = _load_agent_config(agents_config_path)
+    except Exception as e:
+        print(f"Failed to load agent config: {e}", file=sys.stderr)
+        return 2
+
+    configured_name = str(agent_cfg.get("name", "")).strip()
+    if not configured_name:
+        print("agent config missing required 'name'", file=sys.stderr)
+        return 2
+
+    enabled, reason = _is_agent_enabled(agent_cfg)
+    if not enabled:
+        print(f"Failed to load agent config: {reason}", file=sys.stderr)
+        return 2
+
+    agent_name = configured_name
+
+    agent_cfg_path = _resolve_input_toml_path(Path(str(args.agents)))
+    (run_dir / "agent.toml").write_text(
+        agent_cfg_path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    mode = str(agent_cfg.get("mode", "docker")).strip()
+    if mode not in ("docker", "host"):
+        print(f"Unknown agent mode: {mode!r} (expected docker|host)", file=sys.stderr)
+        return 2
+
+    model = str(agent_cfg.get("default_model", "")).strip()
+    if model:
+        _vprint(args.verbose, f"using default_model from agents config: {model}")
+    if not model:
+        print(
+            f"No model configured. Set default_model for agent {agent_name!r} in agents config",
+            file=sys.stderr,
+        )
+        return 2
+    if agent_name == "opencode" and "/" not in model:
+        before = model
+        model = f"openai/{model}"
+        _vprint(args.verbose, f"normalized model for opencode: {before} -> {model}")
+
+    _vprint(args.verbose, f"run_id={run_id}")
+    _vprint(args.verbose, f"run_dir={run_dir}")
+    _vprint(args.verbose, f"workdir={workdir}")
+    _vprint(args.verbose, f"agent={agent_name} mode={mode}")
+    _vprint(args.verbose, f"agents_config={agents_config_path}")
 
     default_prompt = (
         "Solve the attached spec. Edit files in the working directory. "
@@ -531,18 +900,13 @@ def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
         if not prompt:
             prompt = default_prompt
 
-    # Persist the prompt so the container doesn't need to receive it via env.
-    (run_dir / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
+    # Always include pointers so different agent CLIs can locate inputs.
+    spec_ptr = "/run/spec.md" if mode == "docker" else str(run_dir / "spec.md")
+    work_ptr = "/work" if mode == "docker" else str(workdir)
+    prompt = prompt.rstrip() + "\n\n" + f"Spec: {spec_ptr}\nWorkdir: {work_ptr}\n"
 
-    agents_config_path = Path(
-        getattr(args, "agents_config", "") or AGENTS_CONFIG_DEFAULT
-    )
-    try:
-        agents = _load_agents_config(agents_config_path)
-        agent_cfg = _get_agent_cfg(agents, agent_name)
-    except Exception as e:
-        print(f"Failed to load agent config: {e}", file=sys.stderr)
-        return 2
+    # Persist the prompt so the agent doesn't need to receive it via env.
+    (run_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
 
     pass_env_keys = agent_cfg.get("pass_env", [])
     if pass_env_keys and not isinstance(pass_env_keys, list):
@@ -561,19 +925,35 @@ def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
         (logs_dir / "agent.forwarded_env.txt").write_text(keys + "\n", encoding="utf-8")
         print(f"Forwarding env into agent container: {keys}", file=sys.stderr)
 
-    # Run agent in Docker so the session is sandboxed similarly to eval.
     try:
-        op = _run_agent_in_docker(
-            image=args.image,
-            workdir=workdir,
-            run_dir=run_dir,
-            agent_name=agent_name,
-            agent_cfg=agent_cfg,
-            model=args.model,
-            network=args.network,
-            timeout_sec=timeout_sec,
-            extra_env=extra_env,
-        )
+        if mode == "docker":
+            op = _run_agent_in_docker(
+                image=args.image,
+                workdir=workdir,
+                run_dir=run_dir,
+                agent_name=agent_name,
+                agent_cfg=agent_cfg,
+                model=model,
+                network=args.network,
+                timeout_sec=timeout_sec,
+                extra_env=extra_env,
+                verbose=args.verbose,
+                cmd_log_path=logs_dir / "agent.docker_cmd.txt",
+            )
+        elif mode == "host":
+            op = _run_agent_on_host(
+                workdir=workdir,
+                run_dir=run_dir,
+                agent_name=agent_name,
+                agent_cfg=agent_cfg,
+                model=model,
+                timeout_sec=timeout_sec,
+                extra_env=extra_env,
+                verbose=args.verbose,
+                cmd_log_path=logs_dir / "agent.host_cmd.txt",
+            )
+        else:
+            raise ValueError(f"Unknown agent mode: {mode!r} (expected docker|host)")
     except (FileNotFoundError, ValueError) as e:
         (logs_dir / "agent.stderr.txt").write_text(str(e) + "\n", encoding="utf-8")
         (logs_dir / "agent.exit_code.txt").write_text("setup_error\n", encoding="utf-8")
@@ -614,6 +994,8 @@ def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
             eval_cmd=eval_cmd,
             network=args.network,
             timeout_sec=timeout_sec,
+            verbose=args.verbose,
+            cmd_log_path=logs_dir / "eval.docker_cmd.txt",
         )
     except FileNotFoundError as e:
         print(f"Failed to run docker: {e}", file=sys.stderr)
@@ -653,32 +1035,66 @@ def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # Convenience form: `bench <agent.toml> <task> ...` means `bench run ...`.
+    argv2 = list(argv)
+    if argv2:
+        if argv2[0].endswith(".toml"):
+            argv2 = ["run"] + argv2
+        elif argv2[0] == "--verbose" and len(argv2) > 1 and argv2[1].endswith(".toml"):
+            argv2 = ["--verbose", "run"] + argv2[1:]
+
     p = argparse.ArgumentParser(prog="bench")
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print internal runner actions to stderr",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_list = sub.add_parser("list", help="List available tasks")
     p_list.set_defaults(fn=cmd_list)
 
-    p_run = sub.add_parser("run", help="Run a task eval in Docker")
+    p_run = sub.add_parser("run", help="Run agent solve + eval")
+    p_run.add_argument("agents", help="Path to single-agent TOML config")
     p_run.add_argument("task", help="Task in the form <suite>/<task_id>")
+    p_run.add_argument(
+        "--prompt",
+        default="",
+        help="Override the one-shot message (otherwise uses task.toml/default)",
+    )
     p_run.add_argument("--image", default="scibench:0.1", help="Docker image tag")
     p_run.add_argument("--network", choices=["on", "off"], default="on")
     p_run.add_argument("--timeout-sec", type=int, default=600)
     p_run.add_argument("--run-id", default="")
+    p_run.add_argument("--result-dir", default="")
     p_run.set_defaults(fn=cmd_run)
 
+    p_eval = sub.add_parser("eval", help="Run eval-only on an existing workdir")
+    p_eval.add_argument("task", help="Task in the form <suite>/<task_id>")
+    p_eval.add_argument("--workdir", required=True)
+    p_eval.add_argument("--image", default="scibench:0.1", help="Docker image tag")
+    p_eval.add_argument("--network", choices=["on", "off"], default="on")
+    p_eval.add_argument("--timeout-sec", type=int, default=600)
+    p_eval.add_argument("--run-id", default="")
+    p_eval.add_argument("--result-dir", default="")
+    p_eval.set_defaults(fn=cmd_eval)
+
     p_prepare = sub.add_parser("prepare", help="Create an isolated run workspace")
+    p_prepare.add_argument("agents", help="Path to single-agent TOML config")
     p_prepare.add_argument("task", help="Task in the form <suite>/<task_id>")
     p_prepare.add_argument("--run-id", default="")
+    p_prepare.add_argument("--result-dir", default="")
     p_prepare.set_defaults(fn=cmd_prepare)
 
     p_shell = sub.add_parser(
         "shell", help="Open an interactive shell in the task workspace"
     )
+    p_shell.add_argument("agents", help="Path to single-agent TOML config")
     p_shell.add_argument("task", help="Task in the form <suite>/<task_id>")
     p_shell.add_argument("--image", default="scibench:0.1", help="Docker image tag")
     p_shell.add_argument("--network", choices=["on", "off"], default="on")
     p_shell.add_argument("--run-id", default="")
+    p_shell.add_argument("--result-dir", default="")
     p_shell.add_argument(
         "cmd",
         nargs="*",
@@ -686,48 +1102,7 @@ def main(argv: list[str]) -> int:
     )
     p_shell.set_defaults(fn=cmd_shell)
 
-    p_agent = sub.add_parser(
-        "agent",
-        help="Prepare workdir, run an agent one-shot, then eval",
-    )
-    p_agent.add_argument("task", help="Task in the form <suite>/<task_id>")
-    p_agent.add_argument(
-        "--agent",
-        default="opencode",
-        help="Agent key from agents.json (e.g. opencode)",
-    )
-    p_agent.add_argument("--agents-config", default=str(AGENTS_CONFIG_DEFAULT))
-    p_agent.add_argument("--model", "-m", default="openai/gpt-5.3-codex")
-    p_agent.add_argument(
-        "--prompt",
-        default="",
-        help="Override the one-shot message (otherwise uses task.json/default)",
-    )
-    p_agent.add_argument("--image", default="scibench:0.1", help="Docker image tag")
-    p_agent.add_argument("--network", choices=["on", "off"], default="on")
-    p_agent.add_argument("--timeout-sec", type=int, default=600)
-    p_agent.add_argument("--run-id", default="")
-    p_agent.set_defaults(fn=cmd_agent)
-
-    p_op = sub.add_parser(
-        "opencode",
-        help="Prepare workdir, run OpenCode one-shot, then eval",
-    )
-    p_op.add_argument("task", help="Task in the form <suite>/<task_id>")
-    p_op.add_argument("--model", "-m", default="openai/gpt-5.3-codex")
-    p_op.add_argument(
-        "--prompt",
-        default="",
-        help="Override the one-shot message (otherwise uses task.json/default)",
-    )
-    p_op.add_argument("--agents-config", default=str(AGENTS_CONFIG_DEFAULT))
-    p_op.add_argument("--image", default="scibench:0.1", help="Docker image tag")
-    p_op.add_argument("--network", choices=["on", "off"], default="on")
-    p_op.add_argument("--timeout-sec", type=int, default=600)
-    p_op.add_argument("--run-id", default="")
-    p_op.set_defaults(fn=cmd_opencode)
-
-    args = p.parse_args(argv)
+    args = p.parse_args(argv2)
     return int(args.fn(args))
 
 
