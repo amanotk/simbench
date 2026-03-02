@@ -16,6 +16,52 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCH_ROOT = REPO_ROOT / "benchmarks"
 RUNS_ROOT = REPO_ROOT / "runs"
+AGENTS_CONFIG_DEFAULT = REPO_ROOT / "agents.json"
+
+
+def _expand_path(s: str) -> str:
+    return os.path.expandvars(os.path.expanduser(s))
+
+
+def _load_agents_config(path: Path) -> dict[str, Any]:
+    p = Path(_expand_path(str(path)))
+    if not p.is_absolute():
+        p = (REPO_ROOT / p).resolve()
+    if not p.exists():
+        raise FileNotFoundError(f"agents config not found: {p}")
+
+    data = json.loads(p.read_text(encoding="utf-8"))
+    if int(data.get("version", 0)) != 1:
+        raise ValueError(f"Unsupported agents config version: {data.get('version')}")
+    agents = data.get("agents")
+    if not isinstance(agents, dict):
+        raise ValueError("agents config missing top-level 'agents' object")
+    return agents
+
+
+def _get_agent_cfg(agents: dict[str, Any], name: str) -> dict[str, Any]:
+    cfg = agents.get(name)
+    if not isinstance(cfg, dict):
+        raise KeyError(f"Unknown agent: {name}")
+    if cfg.get("enabled", True) is False:
+        raise ValueError(
+            f"Agent {name!r} is disabled in agents.json; set enabled=true to use it"
+        )
+    return cfg
+
+
+def _resolve_host_executable(spec: str) -> Path:
+    s = _expand_path(spec)
+    if "/" in s or s.startswith("."):
+        p = Path(s)
+        if p.exists():
+            return p.resolve()
+        raise FileNotFoundError(f"Executable not found: {p}")
+
+    found = shutil.which(s)
+    if not found:
+        raise FileNotFoundError(f"Executable not found on PATH: {s}")
+    return Path(found).resolve()
 
 
 @dataclass(frozen=True)
@@ -209,17 +255,16 @@ def _run_docker_shell(
     return subprocess.call(docker_cmd)
 
 
-def _run_opencode_run_in_docker(
+def _run_agent_in_docker(
     *,
     image: str,
     workdir: Path,
     run_dir: Path,
+    agent_name: str,
+    agent_cfg: dict[str, Any],
     model: str,
-    prompt: str,
     network: str,
     timeout_sec: int,
-    opencode_bin: Path,
-    opencode_auth: Path | None,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     uid = os.getuid() if hasattr(os, "getuid") else 1000
@@ -234,21 +279,71 @@ def _run_opencode_run_in_docker(
         "-e",
         "HOME=/tmp",
         "-e",
-        "OPENCODE_DISABLE_AUTOUPDATE=1",
+        "OMP_NUM_THREADS=1",
         "-e",
-        f"OPENCODE_MODEL={model}",
+        "OPENBLAS_NUM_THREADS=1",
+        "-e",
+        "MKL_NUM_THREADS=1",
+        "-e",
+        "VECLIB_MAXIMUM_THREADS=1",
+        "-e",
+        "NUMEXPR_NUM_THREADS=1",
+        "-e",
+        f"BENCH_AGENT={agent_name}",
+        "-e",
+        f"BENCH_MODEL={model}",
         "-v",
         f"{str(workdir)}:/work:rw",
         "-v",
         f"{str(run_dir)}:/run:ro",
-        "-v",
-        f"{str(opencode_bin)}:/usr/local/bin/opencode:ro",
         "-w",
         "/work",
     ]
 
-    if opencode_auth is not None:
-        docker_cmd += ["-v", f"{str(opencode_auth)}:/opencode-auth.json:ro"]
+    bins = agent_cfg.get("bins", [])
+    if not isinstance(bins, list) or not bins:
+        raise ValueError(f"Agent {agent_name!r} missing 'bins' list")
+    for b in bins:
+        if not isinstance(b, dict):
+            raise ValueError(f"Agent {agent_name!r} has invalid bin entry")
+        host = str(b.get("host", "")).strip()
+        container = str(b.get("container", "")).strip()
+        if not host or not container:
+            raise ValueError(f"Agent {agent_name!r} bin entries require host+container")
+        host_path = _resolve_host_executable(host)
+        docker_cmd += ["-v", f"{str(host_path)}:{container}:ro"]
+
+    mounts = agent_cfg.get("mounts", [])
+    if mounts:
+        if not isinstance(mounts, list):
+            raise ValueError(f"Agent {agent_name!r} mounts must be a list")
+        for m in mounts:
+            if not isinstance(m, dict):
+                raise ValueError(f"Agent {agent_name!r} has invalid mount entry")
+            host = str(m.get("host", "")).strip()
+            container = str(m.get("container", "")).strip()
+            mode = str(m.get("mode", "ro")).strip()
+            optional = bool(m.get("optional", False))
+            if not host or not container:
+                raise ValueError(
+                    f"Agent {agent_name!r} mount entries require host+container"
+                )
+            if mode not in ("ro", "rw"):
+                raise ValueError(f"Agent {agent_name!r} mount mode must be ro|rw")
+
+            host_path = Path(_expand_path(host))
+            if not host_path.exists():
+                if optional:
+                    continue
+                raise FileNotFoundError(f"Mount source not found: {host_path}")
+            docker_cmd += ["-v", f"{str(host_path.resolve())}:{container}:{mode}"]
+
+    env_kv = agent_cfg.get("env", {})
+    if env_kv:
+        if not isinstance(env_kv, dict):
+            raise ValueError(f"Agent {agent_name!r} env must be an object")
+        for k, v in env_kv.items():
+            docker_cmd += ["-e", f"{k}={v}"]
 
     if network == "off":
         docker_cmd += ["--network", "none"]
@@ -261,16 +356,18 @@ def _run_opencode_run_in_docker(
         for k, v in extra_env.items():
             docker_cmd += ["-e", f"{k}={v}"]
 
-    # Prepare auth (if mounted) and run opencode in non-interactive mode.
-    inner = [
-        'mkdir -p "$HOME/.local/share/opencode"',
-    ]
-    if opencode_auth is not None:
-        inner.append('cp /opencode-auth.json "$HOME/.local/share/opencode/auth.json"')
-    inner.append(
-        'opencode run -m "$OPENCODE_MODEL" --dir /work "$(cat /run/prompt.txt)" -f /run/spec.md'
-    )
-    docker_cmd += [image, "bash", "-lc", " && ".join(inner)]
+    pre = agent_cfg.get("pre", [])
+    cmd = str(agent_cfg.get("cmd", "")).strip()
+    if not cmd:
+        raise ValueError(f"Agent {agent_name!r} missing 'cmd'")
+    if pre and not isinstance(pre, list):
+        raise ValueError(f"Agent {agent_name!r} pre must be a list")
+
+    inner_parts: list[str] = []
+    for part in pre:
+        inner_parts.append(str(part))
+    inner_parts.append(cmd)
+    docker_cmd += [image, "bash", "-lc", " && ".join(inner_parts)]
 
     return subprocess.run(
         docker_cmd,
@@ -382,6 +479,15 @@ def cmd_shell(args: argparse.Namespace) -> int:
 
 
 def cmd_opencode(args: argparse.Namespace) -> int:
+    # Back-compat alias for `bench agent --agent opencode`.
+    return _cmd_agent_common(args=args, agent_name="opencode")
+
+
+def cmd_agent(args: argparse.Namespace) -> int:
+    return _cmd_agent_common(args=args, agent_name=args.agent)
+
+
+def _cmd_agent_common(*, args: argparse.Namespace, agent_name: str) -> int:
     if "/" not in args.task:
         print("Task must be in the form <suite>/<task_id>", file=sys.stderr)
         return 2
@@ -428,71 +534,71 @@ def cmd_opencode(args: argparse.Namespace) -> int:
     # Persist the prompt so the container doesn't need to receive it via env.
     (run_dir / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
 
-    opencode_bin_s = shutil.which("opencode")
-    if not opencode_bin_s:
-        print("opencode is not installed or not on PATH", file=sys.stderr)
-        return 1
-    opencode_bin = Path(opencode_bin_s)
+    agents_config_path = Path(
+        getattr(args, "agents_config", "") or AGENTS_CONFIG_DEFAULT
+    )
+    try:
+        agents = _load_agents_config(agents_config_path)
+        agent_cfg = _get_agent_cfg(agents, agent_name)
+    except Exception as e:
+        print(f"Failed to load agent config: {e}", file=sys.stderr)
+        return 2
 
-    opencode_auth = Path.home() / ".local" / "share" / "opencode" / "auth.json"
-    if not opencode_auth.exists():
-        opencode_auth = None
-
-    pass_env_keys = [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_API_VERSION",
-    ]
+    pass_env_keys = agent_cfg.get("pass_env", [])
+    if pass_env_keys and not isinstance(pass_env_keys, list):
+        print(f"Agent {agent_name!r} pass_env must be a list", file=sys.stderr)
+        return 2
     extra_env: dict[str, str] = {}
     for k in pass_env_keys:
+        if not isinstance(k, str):
+            continue
         v = os.environ.get(k)
         if v:
             extra_env[k] = v
 
     if extra_env:
         keys = ",".join(sorted(extra_env.keys()))
-        (logs_dir / "opencode.forwarded_env.txt").write_text(
-            keys + "\n", encoding="utf-8"
-        )
+        (logs_dir / "agent.forwarded_env.txt").write_text(keys + "\n", encoding="utf-8")
         print(f"Forwarding env into agent container: {keys}", file=sys.stderr)
 
-    # Run OpenCode in Docker so the agent session is sandboxed similarly to eval.
+    # Run agent in Docker so the session is sandboxed similarly to eval.
     try:
-        op = _run_opencode_run_in_docker(
+        op = _run_agent_in_docker(
             image=args.image,
             workdir=workdir,
             run_dir=run_dir,
+            agent_name=agent_name,
+            agent_cfg=agent_cfg,
             model=args.model,
-            prompt=prompt,
             network=args.network,
             timeout_sec=timeout_sec,
-            opencode_bin=opencode_bin,
-            opencode_auth=opencode_auth,
             extra_env=extra_env,
         )
+    except (FileNotFoundError, ValueError) as e:
+        (logs_dir / "agent.stderr.txt").write_text(str(e) + "\n", encoding="utf-8")
+        (logs_dir / "agent.exit_code.txt").write_text("setup_error\n", encoding="utf-8")
+        print(f"Agent setup failed: {e}", file=sys.stderr)
+        print(str(run_dir))
+        return 1
     except subprocess.TimeoutExpired as e:
-        (logs_dir / "opencode.stdout.txt").write_text(
+        (logs_dir / "agent.stdout.txt").write_text(
             _coerce_text(e.stdout), encoding="utf-8"
         )
-        (logs_dir / "opencode.stderr.txt").write_text(
+        (logs_dir / "agent.stderr.txt").write_text(
             _coerce_text(e.stderr) + "\nTimed out\n", encoding="utf-8"
         )
-        (logs_dir / "opencode.exit_code.txt").write_text("timeout\n", encoding="utf-8")
-        print(f"Timed out after {timeout_sec}s (opencode)", file=sys.stderr)
+        (logs_dir / "agent.exit_code.txt").write_text("timeout\n", encoding="utf-8")
+        print(f"Timed out after {timeout_sec}s (agent)", file=sys.stderr)
         print(str(run_dir))
         return 1
 
-    (logs_dir / "opencode.stdout.txt").write_text(op.stdout, encoding="utf-8")
-    (logs_dir / "opencode.stderr.txt").write_text(op.stderr, encoding="utf-8")
-    (logs_dir / "opencode.exit_code.txt").write_text(
+    (logs_dir / "agent.stdout.txt").write_text(op.stdout, encoding="utf-8")
+    (logs_dir / "agent.stderr.txt").write_text(op.stderr, encoding="utf-8")
+    (logs_dir / "agent.exit_code.txt").write_text(
         str(op.returncode) + "\n", encoding="utf-8"
     )
     if op.returncode != 0:
-        print(f"opencode failed with exit code {op.returncode}", file=sys.stderr)
+        print(f"agent failed with exit code {op.returncode}", file=sys.stderr)
         print(f"Logs: {logs_dir}", file=sys.stderr)
         if op.stderr.strip():
             print(op.stderr.strip(), file=sys.stderr)
@@ -580,6 +686,29 @@ def main(argv: list[str]) -> int:
     )
     p_shell.set_defaults(fn=cmd_shell)
 
+    p_agent = sub.add_parser(
+        "agent",
+        help="Prepare workdir, run an agent one-shot, then eval",
+    )
+    p_agent.add_argument("task", help="Task in the form <suite>/<task_id>")
+    p_agent.add_argument(
+        "--agent",
+        default="opencode",
+        help="Agent key from agents.json (e.g. opencode)",
+    )
+    p_agent.add_argument("--agents-config", default=str(AGENTS_CONFIG_DEFAULT))
+    p_agent.add_argument("--model", "-m", default="openai/gpt-5.3-codex")
+    p_agent.add_argument(
+        "--prompt",
+        default="",
+        help="Override the one-shot message (otherwise uses task.json/default)",
+    )
+    p_agent.add_argument("--image", default="scibench:0.1", help="Docker image tag")
+    p_agent.add_argument("--network", choices=["on", "off"], default="on")
+    p_agent.add_argument("--timeout-sec", type=int, default=600)
+    p_agent.add_argument("--run-id", default="")
+    p_agent.set_defaults(fn=cmd_agent)
+
     p_op = sub.add_parser(
         "opencode",
         help="Prepare workdir, run OpenCode one-shot, then eval",
@@ -591,6 +720,7 @@ def main(argv: list[str]) -> int:
         default="",
         help="Override the one-shot message (otherwise uses task.json/default)",
     )
+    p_op.add_argument("--agents-config", default=str(AGENTS_CONFIG_DEFAULT))
     p_op.add_argument("--image", default="scibench:0.1", help="Docker image tag")
     p_op.add_argument("--network", choices=["on", "off"], default="on")
     p_op.add_argument("--timeout-sec", type=int, default=600)

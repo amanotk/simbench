@@ -45,14 +45,19 @@ Run a one-shot OpenCode solve + eval (requires OpenCode configured):
 python3 runner/bench.py opencode demo/py-add-001 --image scibench:0.1 -m openai/gpt-5.3-codex
 ```
 
+Generic agent form (configured via `agents.json`):
+
+```bash
+python3 runner/bench.py agent demo/py-add-001 --agent opencode --image scibench:0.1 -m openai/gpt-5.3-codex
+```
+
 You usually do not need `--prompt`; the runner uses a default message. You can also
 set `prompt` or `prompt_file` in the task's `task.json`.
 
 This runs the OpenCode one-shot session inside Docker by mounting:
 - the task workdir at `/work`
 - the run metadata (including `spec.md`) at `/run` (read-only)
-- your host `opencode` binary into the container
-- your host `~/.local/share/opencode/auth.json` if it exists
+- host agent binaries/configs as defined in `agents.json`
 
 Open a shell in an isolated workspace (useful for manual task authoring/debugging):
 
@@ -70,3 +75,7 @@ python3 runner/bench.py shell demo/py-add-001 --image scibench:0.1 -- pytest -q
 
 - Network is configurable per run (`--network on|off`).
 - The v0 runner executes `eval_cmd` inside Docker with the task workspace mounted at `/work` and the eval harness mounted at `/eval` (read-only).
+
+## Docs
+
+- `docs/run-flow.md`: what happens during a benchmark run

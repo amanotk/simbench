@@ -13,6 +13,7 @@ Repo map (core):
 - `benchmarks/<suite>/<task_id>/workspace/`: template copied into a fresh per-run workdir
 - `benchmarks/<suite>/<task_id>/eval/`: evaluation harness (should be hidden from the model)
 - `runner/bench.py`: CLI (list/prepare/shell/run)
+- `agents.json`: config for running different agent CLIs in Docker
 - `docker/Dockerfile`: unified toolchain image (Python + C++ + Fortran)
 - `runs/`: run artifacts (gitignored)
 
@@ -32,6 +33,7 @@ python3 runner/bench.py list
 python3 runner/bench.py prepare demo/py-add-001
 python3 runner/bench.py shell demo/py-add-001 --image scibench:0.1
 python3 runner/bench.py run demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py agent demo/py-add-001 --agent opencode --image scibench:0.1 -m openai/gpt-5.3-codex
 python3 runner/bench.py opencode demo/py-add-001 --image scibench:0.1 -m openai/gpt-5.3-codex
 ```
 
@@ -102,7 +104,7 @@ Debug a task locally: use `bench.py shell` to iterate, then `bench.py run` to sc
 
 - The runner mounts the task workspace at `/work` (read/write).
 - The runner mounts the eval harness at `/eval` (read-only) during `run`.
-- The `opencode` subcommand runs the agent inside Docker by bind-mounting the host `opencode` binary and (if present) `~/.local/share/opencode/auth.json`.
+- The `agent`/`opencode` commands run the agent inside Docker by bind-mounting host binaries/configs as defined in `agents.json`.
 - Use `--network off` for an offline track (Docker `--network none`).
 - Keep benchmark workspaces free of secrets; with network enabled, assume the agent can exfiltrate anything it can read.
 
