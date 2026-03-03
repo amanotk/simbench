@@ -71,15 +71,7 @@ What happens:
 - The harness writes `/work/result.json` and the runner copies it to `runs/.../result.json`.
 
 
-## Positional shorthand
-
-Command:
-
-```bash
-python3 runner/bench.py sample/opencode.toml <suite>/<task_id> --image scibench:0.1
-```
-
-This is shorthand for `run`. The runner uses the selected TOML to:
+The runner uses the selected TOML to:
 
 - decide which optional host config files to mount into the agent container
 - decide what command to run for that agent

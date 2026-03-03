@@ -1,4 +1,4 @@
-# Agent Notes (Scientific Coding Benchmark)
+# Agent Notes
 
 This repo contains an agentic coding benchmark harness plus benchmark tasks.
 Agents working here should keep runs isolated (fresh workdir per task) and keep
@@ -12,7 +12,7 @@ Repo map (core):
 - `benchmarks/<suite>/<task_id>/task.toml`: task metadata for the runner
 - `benchmarks/<suite>/<task_id>/workspace/`: template copied into a fresh per-run workdir
 - `benchmarks/<suite>/<task_id>/eval/`: evaluation harness (should be hidden from the model)
-- `runner/bench.py`: CLI (list/prepare/shell/run/eval)
+- `runner/bench.py`: CLI (list/check/prepare/shell/run/eval)
 - `agents_default.toml`: default multi-agent config (opencode/codex/claude/copilot)
 - `sample/*.toml`: sample single-agent overrides
 - `docker/Dockerfile`: unified toolchain image (Python + C++ + Fortran)
@@ -31,10 +31,10 @@ Runner basics:
 
 ```bash
 python3 runner/bench.py list
+python3 runner/bench.py check
 python3 runner/bench.py prepare sample/opencode.toml demo/py-rk2-001
-python3 runner/bench.py shell sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-rk2-001
 python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
-python3 runner/bench.py sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
 python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image scibench:0.1
 ```
 

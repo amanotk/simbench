@@ -1483,14 +1483,6 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str]) -> int:
-    # Convenience form: `bench <agent.toml> <task> ...` means `bench run ...`.
-    argv2 = list(argv)
-    if argv2:
-        if argv2[0].endswith(".toml"):
-            argv2 = ["run"] + argv2
-        elif argv2[0] == "--verbose" and len(argv2) > 1 and argv2[1].endswith(".toml"):
-            argv2 = ["--verbose", "run"] + argv2[1:]
-
     p = argparse.ArgumentParser(prog="bench")
     p.add_argument(
         "--verbose",
@@ -1559,7 +1551,7 @@ def main(argv: list[str]) -> int:
     )
     p_shell.set_defaults(fn=cmd_shell)
 
-    args = p.parse_args(argv2)
+    args = p.parse_args(argv)
     return int(args.fn(args))
 
 

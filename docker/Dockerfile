@@ -19,7 +19,7 @@ RUN apt-get update \
     python3-numpy python3-scipy python3-pytest \
   && rm -rf /var/lib/apt/lists/* \
   && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
-  && uv pip install --system --no-cache ruff fprettify \
+  && uv pip install --system --break-system-packages --no-cache ruff fprettify \
   && npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex @github/copilot \
   && uv --version
 
