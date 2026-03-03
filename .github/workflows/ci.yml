@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test-and-check:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Compile check runner
+        run: python3 -m py_compile runner/bench.py
+
+      - name: Runner unit tests
+        run: python3 -m unittest -q tests.test_runner_bench
+
+      - name: Validate task scaffolding
+        run: python3 runner/bench.py check
+
+  formatting-check:
+    name: Formatting checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Ruff format check
+        run: uvx ruff format --check runner tests
+
+      - name: Ruff lint check
+        run: uvx ruff check runner tests
+
+      - name: C/C++ format check
+        shell: bash
+        run: |
+          files="$(git ls-files '*.cpp' '*.hpp')"
+          if [ -n "$files" ]; then
+            clang-format --dry-run --Werror $files
+          fi
+
+      - name: Fortran format check
+        shell: bash
+        run: |
+          files="$(git ls-files '*.f90' '*.f95' '*.f03' '*.fpp' '*.F90' '*.F95' '*.F03' '*.FPP')"
+          if [ -z "$files" ]; then
+            exit 0
+          fi
+
+          tmp_file="$(mktemp)"
+          uvx fprettify -d $files > "$tmp_file"
+          if [ -s "$tmp_file" ]; then
+            cat "$tmp_file"
+            echo "Fortran sources are not formatted with fprettify."
+            exit 1
+          fi
