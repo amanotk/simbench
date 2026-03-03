@@ -66,6 +66,7 @@ python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image 
 
 ## Docs
 
+- `docs/development.md`: developer workflow, branching, and CI policy
 - `docs/task-development.md`: task-author quickstart
 - `docs/task-reference.md`: task format and contracts
 - `docs/run-flow.md`: runtime and artifact flow

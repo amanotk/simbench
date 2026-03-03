@@ -4,6 +4,10 @@ This repo contains an agentic coding benchmark harness plus benchmark tasks.
 Agents working here should keep runs isolated (fresh workdir per task) and keep
 evaluation authoritative.
 
+Developer workflow policy (branching, CI, PR flow) lives in `docs/development.md`.
+Use `feature/<name>` branches for new work, merge into `develop`, then promote
+to `main` via PR.
+
 Cursor/Copilot rules:
 - No `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` present.
 
