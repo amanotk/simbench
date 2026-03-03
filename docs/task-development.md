@@ -54,6 +54,20 @@ language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
 prompt = "Read the attached spec.md and solve the task."
+use_shared_workspace = false
+use_shared_eval = false
+```
+
+Optional suite-level shared directories (opt-in per task):
+
+- `benchmarks/<suite>/shared/workspace/` (copied into `/work` before task workspace)
+- `benchmarks/<suite>/shared/eval/` (mounted read-only at `/eval_shared` during eval)
+
+Enable them in task `task.toml`:
+
+```toml
+use_shared_workspace = true
+use_shared_eval = true
 ```
 
 `eval/run.sh`:

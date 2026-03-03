@@ -1,0 +1,7 @@
+[project]
+name = "cpp-rk2-001"
+version = "0.0.0"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

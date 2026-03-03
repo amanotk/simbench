@@ -31,11 +31,11 @@ Runner basics:
 
 ```bash
 python3 runner/bench.py list
-python3 runner/bench.py prepare sample/opencode.toml demo/py-add-001
-python3 runner/bench.py shell sample/opencode.toml demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py sample/opencode.toml demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py eval demo/py-add-001 --workdir /path/to/workdir --image scibench:0.1
+python3 runner/bench.py prepare sample/opencode.toml demo/py-rk2-001
+python3 runner/bench.py shell sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image scibench:0.1
 ```
 
 Agent defaults:
@@ -45,14 +45,14 @@ Agent defaults:
 Verbose runner output:
 
 ```bash
-python3 runner/bench.py --verbose run sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py --verbose run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
 ```
 
 Network tracks:
 
 ```bash
-python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --network on
-python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --network off
+python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --network on
+python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --network off
 ```
 
 Public tests (inside an agent shell; these live under `workspace/tests/`):
@@ -64,7 +64,7 @@ pytest -q
 Run tests via the runner's shell command (no need to manually `cd`):
 
 ```bash
-python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-add-001 -- pytest -q
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-rk2-001 -- pytest -q
 ```
 
 Note: place shell options (like `--image`) before `agents task`, and use `--`

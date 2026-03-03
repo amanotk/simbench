@@ -39,31 +39,31 @@ Validate task layout/metadata:
 
 ```bash
 python3 runner/bench.py check
-python3 runner/bench.py check demo/py-add-001
+python3 runner/bench.py check demo/py-rk2-001
 ```
 
 Run full benchmark (agent solve + hidden eval):
 
 ```bash
-python3 runner/bench.py run sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
 ```
 
 Shorthand (implicit `run`):
 
 ```bash
-python3 runner/bench.py sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
 ```
 
 Prepare an isolated workspace (uses agent config and creates run artifacts):
 
 ```bash
-python3 runner/bench.py prepare sample/opencode.toml demo/py-add-001
+python3 runner/bench.py prepare sample/opencode.toml demo/py-rk2-001
 ```
 
 Open a shell in an isolated workspace:
 
 ```bash
-python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-add-001
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-rk2-001
 ```
 
 For shell subcommands with flags, place shell options before `agents task` and
@@ -72,13 +72,13 @@ use `--` before command flags (for example, `-- pytest -q`).
 Run eval-only on an existing workdir:
 
 ```bash
-python3 runner/bench.py eval demo/py-add-001 --workdir /path/to/workdir --image scibench:0.1
+python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image scibench:0.1
 ```
 
 Verbose run:
 
 ```bash
-python3 runner/bench.py --verbose run sample/opencode.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py --verbose run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
 ```
 
 In verbose mode, the runner streams full agent/eval `stdout` and `stderr`
@@ -100,13 +100,20 @@ These are exposed to agent commands as:
 Run different agents by selecting their TOML config:
 
 ```bash
-python3 runner/bench.py run sample/claude.toml demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py run sample/codex.toml demo/py-add-001 --image scibench:0.1
-python3 runner/bench.py run sample/copilot.toml demo/py-add-001 --image scibench:0.1
+python3 runner/bench.py run sample/claude.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py run sample/codex.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py run sample/copilot.toml demo/py-rk2-001 --image scibench:0.1
 ```
 
 You usually do not need `--prompt`; the runner uses a default message. You can also
 set `prompt` or `prompt_file` in the task's `task.toml`.
+
+For suite-level reuse, tasks can opt in to shared directories in `task.toml`:
+
+- `use_shared_workspace = true` copies `benchmarks/<suite>/shared/workspace/`
+  into `/work` before task workspace files are overlaid.
+- `use_shared_eval = true` mounts `benchmarks/<suite>/shared/eval/` as
+  `/eval_shared` during evaluation.
 
 This runs agent sessions in Docker by mounting:
 - the task workdir at `/work`

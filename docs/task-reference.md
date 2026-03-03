@@ -37,16 +37,20 @@ Optional keys:
 
 - `prompt` (string): one-shot prompt for the solver
 - `prompt_file` (string): path relative to task root
+- `use_shared_workspace` (boolean): if true, copy `benchmarks/<suite>/shared/workspace/` into run workdir before overlaying task `workspace/`
+- `use_shared_eval` (boolean): if true, mount `benchmarks/<suite>/shared/eval/` at `/eval_shared` during eval
 
 Example:
 
 ```toml
-id = "py-add-001"
+id = "py-rk2-001"
 suite = "demo"
 language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
 prompt = "Read the attached spec.md and solve the task."
+use_shared_workspace = false
+use_shared_eval = false
 ```
 
 
@@ -60,6 +64,9 @@ When used with `eval_cmd = "/eval/run.sh"`:
 - eval harness is mounted at `/eval` (read-only)
 - script must write `/work/result.json`
 - script should exit `0` after writing result
+
+If `use_shared_eval = true`, suite-level shared eval files are available at
+`/eval_shared` in the eval container.
 
 
 ## Result format

@@ -399,6 +399,36 @@ class Task:
     meta: dict
 
 
+def _task_meta_bool(task: Task, key: str) -> bool:
+    if key not in task.meta:
+        return False
+    val = task.meta.get(key)
+    if isinstance(val, bool):
+        return val
+    raise ValueError(f"task.toml {key} must be a boolean")
+
+
+def _suite_shared_workspace_dir(task: Task) -> Path:
+    return task.path.parent / "shared" / "workspace"
+
+
+def _suite_shared_eval_dir(task: Task) -> Path:
+    return task.path.parent / "shared" / "eval"
+
+
+def _shared_eval_mount_dir(task: Task) -> Path | None:
+    use_shared_eval = _task_meta_bool(task, "use_shared_eval")
+    if not use_shared_eval:
+        return None
+    shared_eval = _suite_shared_eval_dir(task)
+    if not shared_eval.exists() or not shared_eval.is_dir():
+        raise FileNotFoundError(
+            "task.toml use_shared_eval=true but suite shared eval "
+            f"directory is missing: {shared_eval}"
+        )
+    return shared_eval
+
+
 def _coerce_text(v: object) -> str:
     if v is None:
         return ""
@@ -505,6 +535,32 @@ def _check_task(task: Task) -> tuple[list[str], list[str]]:
         if not p.exists() or not p.is_file():
             errors.append(f"prompt_file not found: {p}")
 
+    use_shared_workspace = meta.get("use_shared_workspace", False)
+    if not isinstance(use_shared_workspace, bool):
+        errors.append("task.toml use_shared_workspace must be a boolean")
+        use_shared_workspace = False
+
+    use_shared_eval = meta.get("use_shared_eval", False)
+    if not isinstance(use_shared_eval, bool):
+        errors.append("task.toml use_shared_eval must be a boolean")
+        use_shared_eval = False
+
+    if use_shared_workspace:
+        shared_workspace = _suite_shared_workspace_dir(task)
+        if not shared_workspace.exists() or not shared_workspace.is_dir():
+            errors.append(
+                "task.toml use_shared_workspace=true but suite shared workspace "
+                f"directory is missing: {shared_workspace}"
+            )
+
+    if use_shared_eval:
+        shared_eval = _suite_shared_eval_dir(task)
+        if not shared_eval.exists() or not shared_eval.is_dir():
+            errors.append(
+                "task.toml use_shared_eval=true but suite shared eval "
+                f"directory is missing: {shared_eval}"
+            )
+
     if task.spec_path.is_file():
         spec_text = task.spec_path.read_text(encoding="utf-8").strip()
         if not spec_text:
@@ -536,6 +592,10 @@ def _check_task(task: Task) -> tuple[list[str], list[str]]:
             warnings.append("eval/run.sh should start with '#!/usr/bin/env bash'")
         if "result.json" not in run_text:
             warnings.append("eval/run.sh does not appear to write result.json")
+        if "/eval_shared" in run_text and not use_shared_eval:
+            warnings.append(
+                "eval/run.sh references /eval_shared but use_shared_eval is false"
+            )
 
     return errors, warnings
 
@@ -606,7 +666,19 @@ def _prepare_run_dir(
 
     if workdir.exists():
         shutil.rmtree(workdir)
-    shutil.copytree(task.workspace_tpl, workdir)
+
+    use_shared_workspace = _task_meta_bool(task, "use_shared_workspace")
+    if use_shared_workspace:
+        shared_workspace = _suite_shared_workspace_dir(task)
+        if not shared_workspace.exists() or not shared_workspace.is_dir():
+            raise FileNotFoundError(
+                "task.toml use_shared_workspace=true but suite shared workspace "
+                f"directory is missing: {shared_workspace}"
+            )
+        shutil.copytree(shared_workspace, workdir)
+        shutil.copytree(task.workspace_tpl, workdir, dirs_exist_ok=True)
+    else:
+        shutil.copytree(task.workspace_tpl, workdir)
 
     (run_dir / "spec.md").write_text(
         task.spec_path.read_text(encoding="utf-8"), encoding="utf-8"
@@ -642,6 +714,7 @@ def _run_docker_eval(
     workdir: Path,
     eval_dir: Path,
     eval_cmd: str,
+    shared_eval_dir: Path | None,
     network: str,
     timeout_sec: int,
     extra_env: dict[str, str] | None = None,
@@ -676,6 +749,8 @@ def _run_docker_eval(
         "-w",
         "/work",
     ]
+    if shared_eval_dir is not None:
+        docker_cmd += ["-v", f"{str(shared_eval_dir)}:/eval_shared:ro"]
     if network == "off":
         docker_cmd += ["--network", "none"]
     elif network == "on":
@@ -997,6 +1072,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
         return 2
 
     timeout_sec = int(task.meta.get("time_limit_sec", args.timeout_sec))
+    try:
+        shared_eval_dir = _shared_eval_mount_dir(task)
+    except (FileNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
     run_id = args.run_id or _gen_run_id()
     try:
@@ -1039,6 +1119,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
             workdir=workdir,
             eval_dir=task.eval_dir,
             eval_cmd=eval_cmd,
+            shared_eval_dir=shared_eval_dir,
             network=args.network,
             timeout_sec=timeout_sec,
             verbose=args.verbose,
@@ -1104,7 +1185,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             run_id=run_id,
             result_dir=args.result_dir,
         )
-    except FileExistsError as e:
+    except (FileExistsError, FileNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         return 2
     agent_cfg_path = _resolve_input_toml_path(Path(str(args.agents)))
@@ -1136,7 +1217,7 @@ def cmd_shell(args: argparse.Namespace) -> int:
             run_id=run_id,
             result_dir=args.result_dir,
         )
-    except FileExistsError as e:
+    except (FileExistsError, FileNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         return 2
     agent_cfg_path = _resolve_input_toml_path(Path(str(args.agents)))
@@ -1171,6 +1252,11 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
         return 2
 
     timeout_sec = int(task.meta.get("time_limit_sec", args.timeout_sec))
+    try:
+        shared_eval_dir = _shared_eval_mount_dir(task)
+    except (FileNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        return 2
     run_id = args.run_id or _gen_run_id()
     try:
         run_dir, workdir, logs_dir = _prepare_run_dir(
@@ -1178,7 +1264,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
             run_id=run_id,
             result_dir=args.result_dir,
         )
-    except FileExistsError as e:
+    except (FileExistsError, FileNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         return 2
 
@@ -1350,6 +1436,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
             workdir=workdir,
             eval_dir=task.eval_dir,
             eval_cmd=eval_cmd,
+            shared_eval_dir=shared_eval_dir,
             network=args.network,
             timeout_sec=timeout_sec,
             verbose=args.verbose,

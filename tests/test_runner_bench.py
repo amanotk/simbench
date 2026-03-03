@@ -279,6 +279,88 @@ class TestBenchHelpers(unittest.TestCase):
         assert dt is not None
         self.assertAlmostEqual(dt, 0.375, places=6)
 
+    def test_prepare_run_dir_merges_suite_shared_workspace(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            bench_root = td_path / "benchmarks"
+            runs_root = td_path / "runs"
+
+            task_dir = bench_root / "s" / "t"
+            (task_dir / "workspace").mkdir(parents=True)
+            (task_dir / "eval").mkdir(parents=True)
+            (task_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            (task_dir / "task.toml").write_text(
+                """
+id = "t"
+suite = "s"
+language = "python"
+time_limit_sec = 10
+eval_cmd = "/eval/run.sh"
+use_shared_workspace = true
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            shared_workspace = bench_root / "s" / "shared" / "workspace"
+            shared_workspace.mkdir(parents=True)
+            (shared_workspace / "from_shared.txt").write_text(
+                "shared\n", encoding="utf-8"
+            )
+            (shared_workspace / "overlay.txt").write_text(
+                "shared version\n", encoding="utf-8"
+            )
+            (task_dir / "workspace" / "overlay.txt").write_text(
+                "task version\n", encoding="utf-8"
+            )
+
+            with (
+                mock.patch.object(bench, "BENCH_ROOT", bench_root),
+                mock.patch.object(bench, "RUNS_ROOT", runs_root),
+            ):
+                task = bench._load_task("s", "t")
+                _run_dir, workdir, _logs_dir = bench._prepare_run_dir(
+                    task=task, run_id="rid"
+                )
+
+            self.assertEqual(
+                (workdir / "from_shared.txt").read_text(encoding="utf-8"), "shared\n"
+            )
+            self.assertEqual(
+                (workdir / "overlay.txt").read_text(encoding="utf-8"), "task version\n"
+            )
+
+    def test_run_docker_eval_mounts_suite_shared_eval(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            workdir = td_path / "work"
+            eval_dir = td_path / "eval"
+            shared_eval_dir = td_path / "shared_eval"
+            workdir.mkdir()
+            eval_dir.mkdir()
+            shared_eval_dir.mkdir()
+
+            captured = {}
+
+            def fake_run_capture_stream(cmd, **_kwargs):
+                captured["cmd"] = cmd
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with mock.patch.object(
+                bench, "_run_capture_stream", side_effect=fake_run_capture_stream
+            ):
+                bench._run_docker_eval(
+                    image="scibench:0.1",
+                    workdir=workdir,
+                    eval_dir=eval_dir,
+                    eval_cmd="/eval/run.sh",
+                    shared_eval_dir=shared_eval_dir,
+                    network="off",
+                    timeout_sec=5,
+                )
+
+            cmd = " ".join(captured["cmd"])
+            self.assertIn(f"{str(shared_eval_dir)}:/eval_shared:ro", cmd)
+
 
 class TestBenchCLIFlow(unittest.TestCase):
     def test_agent_flow_writes_prompt_and_forwarded_env_log(self):
@@ -674,6 +756,39 @@ eval_cmd = "/eval/run.sh"
             self.assertEqual(rc, 1)
             self.assertIn("[s/t] FAIL", out.getvalue())
             self.assertIn("workspace/ must be a directory", out.getvalue())
+
+    def test_check_fails_when_opted_in_shared_dirs_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            bench_root = td_path / "benchmarks"
+            task_dir = bench_root / "s" / "t"
+            (task_dir / "workspace").mkdir(parents=True)
+            (task_dir / "eval").mkdir(parents=True)
+
+            (task_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            (task_dir / "task.toml").write_text(
+                """
+id = "t"
+suite = "s"
+language = "python"
+time_limit_sec = 10
+eval_cmd = "/eval/run.sh"
+use_shared_workspace = true
+use_shared_eval = true
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(bench, "BENCH_ROOT", bench_root):
+                out = StringIO()
+                err = StringIO()
+                with redirect_stdout(out), redirect_stderr(err):
+                    rc = bench.main(["check", "s/t"])
+
+            self.assertEqual(rc, 1)
+            stdout_text = out.getvalue()
+            self.assertIn("use_shared_workspace=true", stdout_text)
+            self.assertIn("use_shared_eval=true", stdout_text)
 
 
 class TestAgentBinaries(unittest.TestCase):

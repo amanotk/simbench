@@ -2,9 +2,7 @@
 set -u -o pipefail
 
 cd /work
-
-# Hidden-ish tests live in /eval; workspace code lives in /work.
-export PYTHONPATH="/work"
+export PYTHONPATH="/work:/eval_shared"
 
 status="passed"
 score="1.0"
