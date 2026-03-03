@@ -27,6 +27,10 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
+      - name: Install TOML fallback for Python <3.11
+        if: matrix.python-version == '3.10'
+        run: python3 -m pip install tomli
+
       - name: Compile check runner
         run: python3 -m py_compile runner/bench.py
 
