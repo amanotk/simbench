@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 int main(int argc, char** argv)
 {
@@ -18,8 +19,23 @@ int main(int argc, char** argv)
                                                     cxxopts::value<int>())("help", "Show usage");
     options.parse_positional({"rhs_name", "y0", "t0", "h", "n_steps"});
 
-    const auto parsed = options.parse(argc, argv);
-    if (parsed.count("help") != 0 || argc != 6) {
+    std::vector<std::string> args;
+    args.reserve(static_cast<std::size_t>(argc) + 1);
+    for (int i = 0; i < argc; ++i) {
+      args.emplace_back(argv[i]);
+    }
+    if (argc > 1 && args[1] != "-h" && args[1] != "--help") {
+      args.insert(args.begin() + 1, "--");
+    }
+    std::vector<char*> cargs;
+    cargs.reserve(args.size());
+    for (auto& arg : args) {
+      cargs.push_back(const_cast<char*>(arg.c_str()));
+    }
+
+    const auto parsed = options.parse(static_cast<int>(cargs.size()), cargs.data());
+    if (parsed.count("help") != 0 || parsed.count("rhs_name") != 1 || parsed.count("y0") != 1 ||
+        parsed.count("t0") != 1 || parsed.count("h") != 1 || parsed.count("n_steps") != 1) {
       std::cerr << "usage: rk2_cli <rhs_name> <y0> <t0> <h> <n_steps>\n";
       return 2;
     }
