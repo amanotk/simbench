@@ -47,6 +47,7 @@ Recommended required checks:
 Optional heavier check:
 
 - `docker build -t scibench:0.1 -f docker/Dockerfile .`
+- `python3 scripts/build_image.py`
 
 ## Local Developer Workflow
 

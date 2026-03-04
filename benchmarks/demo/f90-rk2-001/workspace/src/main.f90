@@ -1,31 +1,40 @@
 program rk2_cli
+   use flap, only: command_line_interface
    use rk2_solver
    implicit none
 
+   type(command_line_interface) :: cli
+   integer :: error
    character(len=64) :: rhs_name
-   character(len=64) :: arg
    real(8) :: y0, t0, h
    integer :: n_steps, i
    real(8), allocatable :: y(:)
 
-   if (command_argument_count() /= 5) then
-      write (*, '(A)') "usage: rk2_cli <rhs_name> <y0> <t0> <h> <n_steps>"
-      stop 2
-   end if
+   call cli%init(progname='rk2_cli', description='RK2 midpoint solver CLI')
+   call cli%add(positional=.true., position=1, help='rhs_name', required=.true., act='store', error=error)
+   if (error /= 0) stop 2
+   call cli%add(positional=.true., position=2, help='y0', required=.true., act='store', error=error)
+   if (error /= 0) stop 2
+   call cli%add(positional=.true., position=3, help='t0', required=.true., act='store', error=error)
+   if (error /= 0) stop 2
+   call cli%add(positional=.true., position=4, help='h', required=.true., act='store', error=error)
+   if (error /= 0) stop 2
+   call cli%add(positional=.true., position=5, help='n_steps', required=.true., act='store', error=error)
+   if (error /= 0) stop 2
 
-   call get_command_argument(1, rhs_name)
+   call cli%parse(error=error)
+   if (error /= 0) stop 2
 
-   call get_command_argument(2, arg)
-   read (arg, *) y0
-
-   call get_command_argument(3, arg)
-   read (arg, *) t0
-
-   call get_command_argument(4, arg)
-   read (arg, *) h
-
-   call get_command_argument(5, arg)
-   read (arg, *) n_steps
+   call cli%get(position=1, val=rhs_name, error=error)
+   if (error /= 0) stop 2
+   call cli%get(position=2, val=y0, error=error)
+   if (error /= 0) stop 2
+   call cli%get(position=3, val=t0, error=error)
+   if (error /= 0) stop 2
+   call cli%get(position=4, val=h, error=error)
+   if (error /= 0) stop 2
+   call cli%get(position=5, val=n_steps, error=error)
+   if (error /= 0) stop 2
 
    if (n_steps < 0) then
       stop 2

@@ -32,6 +32,12 @@ Configured in `agents_default.toml` (with per-agent overrides under `sample/*.to
 Build image:
 
 ```bash
+python3 scripts/build_image.py
+```
+
+Direct Docker build (fallback):
+
+```bash
 docker build -t scibench:0.1 -f docker/Dockerfile .
 ```
 
@@ -67,6 +73,7 @@ python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image 
 ## Docs
 
 - `docs/development.md`: developer workflow, branching, and CI policy
+- `docs/toolchain.md`: default Docker toolchain and preinstalled libraries
 - `docs/task-development.md`: task-author quickstart
 - `docs/task-reference.md`: task format and contracts
 - `docs/run-flow.md`: runtime and artifact flow
