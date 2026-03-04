@@ -99,6 +99,14 @@ chmod +x benchmarks/<suite>/<task_id>/eval/run.sh
 - The agent container gets `workspace` at `/work`, but not `/eval`.
 
 
+## Python array convention
+
+For Python numerical tasks, use `numpy.ndarray` as the solver state type.
+Do not use nested Python lists for numerical state in task APIs or tests.
+
+If a task needs this convention, state it explicitly in `spec.md`.
+
+
 ## Authoring workflow
 
 Use this loop while building tasks:

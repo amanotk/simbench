@@ -100,3 +100,9 @@ python3 runner/bench.py check <suite>/<task_id>
 
 The checker validates required paths, key metadata fields, and common pitfalls
 (missing `eval/run.sh`, non-executable evaluator, malformed structure).
+
+
+## Language conventions
+
+- Python numerical tasks should use `numpy.ndarray` for solver state.
+- Avoid nested Python lists as numerical state in task APIs and tests.
