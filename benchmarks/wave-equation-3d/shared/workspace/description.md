@@ -74,3 +74,28 @@ x_i = \frac{i + 0.5}{n_x},\; y_j = \frac{j + 0.5}{n_y},\; z_k = \frac{k + 0.5}{n
   (or equivalent slice indexing) is preferred.
 - Avoid `np.roll`-specific formulations so the same scheme maps directly to
   C++/Fortran implementations.
+
+## Language-specific Array Mapping
+
+The physical field is always `u(x, y, z)` with physical indices `(ix, iy, iz)`.
+
+- Fortran representation: `u(ix, iy, iz)`
+- C++/Python representation: `u(iz, iy, ix)`
+
+For C++, use `std::mdspan` with default C-style layout (`layout_right`) for
+multidimensional views.
+
+## CLI Output Contract (Compiled Tasks)
+
+When a task uses a CLI executable, print the interior field in **physical
+index order**:
+
+1. `ix` outer loop
+2. `iy` middle loop
+3. `iz` inner loop
+
+Output one float per line with enough precision for `1e-12` checks.
+
+Default CLI arguments for this suite are:
+
+`<dt> <dx> <nx> <ny> <nz> <n_steps>`

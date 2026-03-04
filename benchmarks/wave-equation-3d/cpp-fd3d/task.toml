@@ -1,6 +1,6 @@
-id = "py-fd3d"
+id = "cpp-fd3d"
 suite = "wave-equation-3d"
-language = "python"
+language = "cpp"
 time_limit_sec = 180
 eval_cmd = "/eval/run.sh"
 prompt = "Read /run/spec.md and /work/description.md, then solve the task in /work."

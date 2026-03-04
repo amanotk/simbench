@@ -535,6 +535,9 @@ def _check_task(task: Task) -> tuple[list[str], list[str]]:
         if not p.exists() or not p.is_file():
             errors.append(f"prompt_file not found: {p}")
 
+    if "review_prompt" in meta and not isinstance(meta.get("review_prompt"), str):
+        errors.append("task.toml review_prompt must be a string")
+
     use_shared_workspace = meta.get("use_shared_workspace", False)
     if not isinstance(use_shared_workspace, bool):
         errors.append("task.toml use_shared_workspace must be a boolean")
@@ -1326,23 +1329,24 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
     )
 
     prompt = ""
-    if args.prompt:
-        prompt = args.prompt
-    else:
-        prompt_file = str(task.meta.get("prompt_file", "")).strip()
-        if prompt_file:
-            p = task.path / prompt_file
-            if p.exists():
-                prompt = p.read_text(encoding="utf-8").strip()
-            else:
-                print(f"prompt_file not found: {p}", file=sys.stderr)
-                return 2
+    prompt_file = str(task.meta.get("prompt_file", "")).strip()
+    if prompt_file:
+        p = task.path / prompt_file
+        if p.exists():
+            prompt = p.read_text(encoding="utf-8").strip()
+        else:
+            print(f"prompt_file not found: {p}", file=sys.stderr)
+            return 2
 
-        if not prompt:
-            prompt = str(task.meta.get("prompt", "")).strip()
+    if not prompt:
+        prompt = str(task.meta.get("prompt", "")).strip()
 
-        if not prompt:
-            prompt = default_prompt
+    if not prompt:
+        prompt = default_prompt
+
+    review_prompt = str(task.meta.get("review_prompt", "")).strip()
+    if review_prompt:
+        prompt = prompt.rstrip() + "\n\n" + review_prompt
 
     # Always include pointers so different agent CLIs can locate inputs.
     spec_ptr = "/run/spec.md" if mode == "docker" else str(run_dir / "spec.md")
@@ -1506,11 +1510,6 @@ def main(argv: list[str]) -> int:
     p_run = sub.add_parser("run", help="Run agent solve + eval")
     p_run.add_argument("agents", help="Path to single-agent TOML config")
     p_run.add_argument("task", help="Task in the form <suite>/<task_id>")
-    p_run.add_argument(
-        "--prompt",
-        default="",
-        help="Override the one-shot message (otherwise uses task.toml/default)",
-    )
     p_run.add_argument("--image", default="scibench:0.1", help="Docker image tag")
     p_run.add_argument("--network", choices=["on", "off"], default="on")
     p_run.add_argument("--timeout-sec", type=int, default=600)

@@ -11,7 +11,7 @@ suite.
 
 Edit `src/wave3d.py` so that `simulate_wave_3d(dt, dx, nx, ny, nz, n_steps)`:
 
-- Returns a `numpy.ndarray` of shape `(nx, ny, nz)`
+- Returns a `numpy.ndarray` representing `u(iz, iy, ix)` with shape `(nz, ny, nx)`
 - Uses `c = 1.0`
 - Uses periodic boundaries in all three dimensions
 - Uses the initial condition defined in `description.md`

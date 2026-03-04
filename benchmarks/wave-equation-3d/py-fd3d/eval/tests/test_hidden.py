@@ -1,7 +1,7 @@
 import numpy as np
 
 from src.wave3d import simulate_wave_3d
-from wave3d_shared import assert_case_metrics, load_cases
+from wave3d_shared import as_physical_from_zyx, assert_case_metrics_from_zyx, load_cases
 
 
 def _laplacian_periodic(u: np.ndarray, dx: float) -> np.ndarray:
@@ -37,7 +37,7 @@ def test_hidden_reference_cases():
             case["nz"],
             case["n_steps"],
         )
-        assert_case_metrics(out, case, tol=1e-12)
+        assert_case_metrics_from_zyx(out, case, tol=1e-12)
 
 
 def test_periodic_laplacian_sum_near_zero():
@@ -50,5 +50,6 @@ def test_periodic_laplacian_sum_near_zero():
         case["nz"],
         case["n_steps"],
     )
-    lap = _laplacian_periodic(out, case["dx"])
+    out_phys = as_physical_from_zyx(out, case["nx"], case["ny"], case["nz"])
+    lap = _laplacian_periodic(out_phys, case["dx"])
     assert np.isclose(float(np.sum(lap)), 0.0, rtol=0.0, atol=1e-10)

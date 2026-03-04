@@ -54,6 +54,7 @@ language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
 prompt = "Read /run/spec.md and solve the task in /work."
+review_prompt = "Before finishing, self-review your changes, identify concrete risks or test gaps, and fix any issues you find before submitting your final answer."
 use_shared_workspace = false
 use_shared_eval = false
 ```
@@ -105,6 +106,9 @@ For Python numerical tasks, use `numpy.ndarray` as the solver state type.
 Do not use nested Python lists for numerical state in task APIs or tests.
 
 If a task needs this convention, state it explicitly in `spec.md`.
+
+For C++ numerical tasks, prefer `std::mdspan` with default C-style layout
+(`layout_right`) for multidimensional state unless the task says otherwise.
 
 
 ## Authoring workflow

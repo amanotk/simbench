@@ -20,6 +20,19 @@ def _load_cases():
     return payload["cases"]
 
 
+def _assert_case_metrics_from_zyx(u_zyx: np.ndarray, case: dict, tol: float = 1e-12):
+    assert isinstance(u_zyx, np.ndarray)
+    assert u_zyx.shape == (case["nz"], case["ny"], case["nx"])
+
+    for probe in case["probes"]:
+        ix, iy, iz = probe["ijk"]
+        actual = float(u_zyx[iz, iy, ix])
+        expected = float(probe["value"])
+        assert np.isclose(actual, expected, rtol=0.0, atol=tol)
+
+    assert np.isclose(float(np.mean(u_zyx)), case["mean"], rtol=0.0, atol=tol)
+
+
 def test_returns_numpy_array_with_expected_shape():
     case = _load_cases()[0]
     out = simulate_wave_3d(
@@ -31,7 +44,7 @@ def test_returns_numpy_array_with_expected_shape():
         case["n_steps"],
     )
     assert isinstance(out, np.ndarray)
-    assert out.shape == (case["nx"], case["ny"], case["nz"])
+    assert out.shape == (case["nz"], case["ny"], case["nx"])
 
 
 def test_public_reference_probes_and_moments():
@@ -44,7 +57,4 @@ def test_public_reference_probes_and_moments():
         case["nz"],
         case["n_steps"],
     )
-    for probe in case["probes"]:
-        i, j, k = probe["ijk"]
-        assert np.isclose(out[i, j, k], probe["value"], rtol=0.0, atol=1e-12)
-    assert np.isclose(float(np.mean(out)), case["mean"], rtol=0.0, atol=1e-12)
+    _assert_case_metrics_from_zyx(out, case, tol=1e-12)
