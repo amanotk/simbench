@@ -49,6 +49,9 @@ u_{i,j,k}^{n+1} &= u_{i,j,k}^{n} + \Delta t\,v_{i,j,k}^{n+1/2}.
 
 Use periodic boundary conditions in all three spatial dimensions.
 
+For implementation, use a one-cell ghost layer around the interior domain and
+copy periodic faces into ghost cells each step.
+
 ## Initial Condition
 
 Use centered Gaussian initial displacement with zero initial velocity:
@@ -64,3 +67,10 @@ Use cell-centered grid coordinates:
 ```math
 x_i = \frac{i + 0.5}{n_x},\; y_j = \frac{j + 0.5}{n_y},\; z_k = \frac{k + 0.5}{n_z}
 ```
+
+## Implementation Notes
+
+- A standard finite-difference implementation with explicit neighbor indexing
+  (or equivalent slice indexing) is preferred.
+- Avoid `np.roll`-specific formulations so the same scheme maps directly to
+  C++/Fortran implementations.

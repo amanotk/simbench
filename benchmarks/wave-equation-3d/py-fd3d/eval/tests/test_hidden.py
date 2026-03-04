@@ -5,11 +5,26 @@ from wave3d_shared import assert_case_metrics, load_cases
 
 
 def _laplacian_periodic(u: np.ndarray, dx: float) -> np.ndarray:
-    return (
-        (np.roll(u, -1, axis=0) - 2.0 * u + np.roll(u, 1, axis=0)) / (dx * dx)
-        + (np.roll(u, -1, axis=1) - 2.0 * u + np.roll(u, 1, axis=1)) / (dx * dx)
-        + (np.roll(u, -1, axis=2) - 2.0 * u + np.roll(u, 1, axis=2)) / (dx * dx)
-    )
+    nx, ny, nz = u.shape
+    out = np.empty_like(u)
+    inv_dx2 = 1.0 / (dx * dx)
+
+    for i in range(nx):
+        i_minus = (i - 1) % nx
+        i_plus = (i + 1) % nx
+        for j in range(ny):
+            j_minus = (j - 1) % ny
+            j_plus = (j + 1) % ny
+            for k in range(nz):
+                k_minus = (k - 1) % nz
+                k_plus = (k + 1) % nz
+                out[i, j, k] = (
+                    (u[i_plus, j, k] - 2.0 * u[i, j, k] + u[i_minus, j, k])
+                    + (u[i, j_plus, k] - 2.0 * u[i, j, k] + u[i, j_minus, k])
+                    + (u[i, j, k_plus] - 2.0 * u[i, j, k] + u[i, j, k_minus])
+                ) * inv_dx2
+
+    return out
 
 
 def test_hidden_reference_cases():

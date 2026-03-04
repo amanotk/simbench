@@ -48,7 +48,7 @@ suite = "demo"
 language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
-prompt = "Read the attached spec.md and solve the task."
+prompt = "Read /run/spec.md and solve the task in /work."
 use_shared_workspace = false
 use_shared_eval = false
 ```
