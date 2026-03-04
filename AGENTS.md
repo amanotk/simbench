@@ -20,12 +20,19 @@ Repo map (core):
 - `agents_default.toml`: default multi-agent config (opencode/codex/claude/copilot)
 - `sample/*.toml`: sample single-agent overrides
 - `docker/Dockerfile`: unified toolchain image (Python + C++ + Fortran)
+- `docs/toolchain.md`: default image libraries, headers, and compile/link hints
 - `runs/`: run artifacts (gitignored)
 
 
 ## Build / Lint / Test Commands
 
 Build the unified Docker image:
+
+```bash
+python3 scripts/build_image.py
+```
+
+Direct Docker build (fallback):
 
 ```bash
 docker build -t scibench:0.1 -f docker/Dockerfile .
