@@ -13,7 +13,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +69,7 @@ def _run_capture_stream(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     pretty_timeline: bool = False,
+    timeout_cleanup: Callable[[], None] | None = None,
 ) -> subprocess.CompletedProcess:
     proc = subprocess.Popen(
         cmd,
@@ -139,6 +140,11 @@ def _run_capture_stream(
     except subprocess.TimeoutExpired as e:
         proc.kill()
         proc.wait()
+        if timeout_cleanup is not None:
+            try:
+                timeout_cleanup()
+            except Exception as cleanup_err:  # pragma: no cover
+                err_parts.append(f"[runner] timeout cleanup failed: {cleanup_err}\n")
         t_out.join()
         t_err.join()
         raise subprocess.TimeoutExpired(
@@ -147,6 +153,17 @@ def _run_capture_stream(
             output="".join(out_parts),
             stderr="".join(err_parts),
         ) from None
+    except KeyboardInterrupt:
+        proc.kill()
+        proc.wait()
+        if timeout_cleanup is not None:
+            try:
+                timeout_cleanup()
+            except Exception as cleanup_err:  # pragma: no cover
+                err_parts.append(f"[runner] timeout cleanup failed: {cleanup_err}\n")
+        t_out.join()
+        t_err.join()
+        raise
 
     t_out.join()
     t_err.join()
@@ -351,6 +368,31 @@ def _redacted_cmd(cmd: list[str]) -> list[str]:
 def _cmd_str(cmd: list[str]) -> str:
     # Render a shell-ish command line for logs.
     return shlex.join(_redacted_cmd(cmd))
+
+
+def _cleanup_docker_container(
+    *, container_name: str, phase: str, verbose: bool
+) -> None:
+    kill_cmd = ["docker", "kill", container_name]
+    rm_cmd = ["docker", "rm", "-f", container_name]
+    _vprint(verbose, f"[{phase}] timeout cleanup: {_cmd_str(kill_cmd)}")
+    subprocess.run(
+        kill_cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=10,
+    )
+    _vprint(verbose, f"[{phase}] timeout cleanup: {_cmd_str(rm_cmd)}")
+    subprocess.run(
+        rm_cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=10,
+    )
 
 
 def _expand_path(s: str) -> str:
@@ -772,10 +814,13 @@ def _run_docker_eval(
     uid = os.getuid() if hasattr(os, "getuid") else 1000
     gid = os.getgid() if hasattr(os, "getgid") else 1000
 
+    container_name = f"scibench-eval-{secrets.token_hex(6)}"
     docker_cmd = [
         "docker",
         "run",
         "--rm",
+        "--name",
+        container_name,
         "-u",
         f"{uid}:{gid}",
         "-e",
@@ -824,6 +869,11 @@ def _run_docker_eval(
         timeout_sec=timeout_sec,
         verbose=verbose,
         phase="eval",
+        timeout_cleanup=lambda: _cleanup_docker_container(
+            container_name=container_name,
+            phase="eval",
+            verbose=verbose,
+        ),
     )
     return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 
@@ -888,10 +938,13 @@ def _run_agent_in_docker(
     uid = os.getuid() if hasattr(os, "getuid") else 1000
     gid = os.getgid() if hasattr(os, "getgid") else 1000
 
+    container_name = f"scibench-agent-{agent_name}-{secrets.token_hex(6)}"
     docker_cmd: list[str] = [
         "docker",
         "run",
         "--rm",
+        "--name",
+        container_name,
         "-u",
         f"{uid}:{gid}",
         "-e",
@@ -1014,6 +1067,11 @@ def _run_agent_in_docker(
         verbose=verbose,
         phase=f"agent:{agent_name}",
         pretty_timeline=True,
+        timeout_cleanup=lambda: _cleanup_docker_container(
+            container_name=container_name,
+            phase=f"agent:{agent_name}",
+            verbose=verbose,
+        ),
     )
     return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 

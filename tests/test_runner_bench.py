@@ -244,6 +244,60 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertIn("[test-phase] stdout: hi", streamed)
         self.assertIn("[test-phase] stderr: oops", streamed)
 
+    def test_run_capture_stream_timeout_invokes_cleanup(self):
+        called = {"count": 0}
+
+        def _cleanup() -> None:
+            called["count"] += 1
+
+        with self.assertRaises(subprocess.TimeoutExpired):
+            bench._run_capture_stream(
+                ["bash", "-lc", "sleep 2"],
+                timeout_sec=1,
+                verbose=False,
+                phase="test-timeout",
+                timeout_cleanup=_cleanup,
+            )
+
+        self.assertEqual(called["count"], 1)
+
+    def test_run_capture_stream_keyboard_interrupt_invokes_cleanup(self):
+        called = {"count": 0}
+
+        class _FakeProc:
+            def __init__(self):
+                self.stdout = StringIO("")
+                self.stderr = StringIO("")
+                self._wait_calls = 0
+                self.killed = False
+
+            def wait(self, timeout=None):  # noqa: ARG002
+                self._wait_calls += 1
+                if self._wait_calls == 1:
+                    raise KeyboardInterrupt
+                return 130
+
+            def kill(self):
+                self.killed = True
+
+        fake_proc = _FakeProc()
+
+        def _cleanup() -> None:
+            called["count"] += 1
+
+        with mock.patch.object(bench.subprocess, "Popen", return_value=fake_proc):
+            with self.assertRaises(KeyboardInterrupt):
+                bench._run_capture_stream(
+                    ["bash", "-lc", "sleep 10"],
+                    timeout_sec=5,
+                    verbose=False,
+                    phase="test-ctrl-c",
+                    timeout_cleanup=_cleanup,
+                )
+
+        self.assertTrue(fake_proc.killed)
+        self.assertEqual(called["count"], 1)
+
     def test_format_agent_stream_event_parses_thinking_and_tool(self):
         state = bench._StreamPrettyState(agent_name="dummy")
         parsed, rendered, suppress_raw = bench._format_agent_stream_event(

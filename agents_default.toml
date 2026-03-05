@@ -13,7 +13,7 @@ pre = [
   "if [ -f /opencode-auth.json ]; then cp /opencode-auth.json \"$HOME/.local/share/opencode/auth.json\"; fi",
   "if [ -f /opencode-config.json ]; then export OPENCODE_CONFIG=/opencode-config.json; elif [ -f /opencode-config.jsonc ]; then export OPENCODE_CONFIG=/opencode-config.jsonc; fi",
 ]
-cmd = "stdbuf -oL -eL opencode run -m \"$BENCH_MODEL\" $BENCH_MODEL_OPTIONS_ARGS --thinking --dir \"$BENCH_WORKDIR\" \"$(cat \"$BENCH_PROMPT_FILE\")\" -f \"$BENCH_SPEC_FILE\""
+cmd = "stdbuf -oL -eL opencode run -m \"$BENCH_MODEL\" $BENCH_MODEL_OPTIONS_ARGS --thinking --dir / \"$(cat \"$BENCH_PROMPT_FILE\")\" -f \"$BENCH_SPEC_FILE\""
 
 [agents.opencode.env]
 OPENCODE_DISABLE_AUTOUPDATE = "1"
