@@ -68,8 +68,10 @@ Use periodic boundary conditions in all three spatial dimensions.
 ## Implementation Notes
 
 - A one-cell ghost layer on both sides of each dimension must be used.
-- Given interior sizes `(nx, ny, nz)`, allocate arrays with ghost cells as
-`(nx + 2, ny + 2, nz + 2)`.
+- Given interior sizes `(nx, ny, nz)`, allocate arrays with one ghost cell on
+  both sides of each physical dimension:
+  - Fortran representation `u(ix, iy, iz)`: `(nx + 2, ny + 2, nz + 2)`
+  - C++/Python representation `u(iz, iy, ix)`: `(nz + 2, ny + 2, nx + 2)`
 - The boundary condition implementation should update ghost cells.
 - Indexing for arrays starts from 0 in C++ and Python, and from 1 in Fortran.
 - For loop indices, use `int` in C++, and `integer` in Fortran, unless specified otherwise.

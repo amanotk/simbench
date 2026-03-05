@@ -68,9 +68,9 @@ jobs:
       - name: C/C++ format check
         shell: bash
         run: |
-          files="$(git ls-files '*.cpp' '*.hpp')"
-          if [ -n "$files" ]; then
-            clang-format --dry-run --Werror $files
+          mapfile -t files < <(git ls-files '*.cpp' '*.hpp' ':!:benchmarks/common/include/**')
+          if [ "${#files[@]}" -gt 0 ]; then
+            clang-format --dry-run --Werror "${files[@]}"
           fi
 
       - name: Fortran format check
