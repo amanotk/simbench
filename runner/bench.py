@@ -42,6 +42,24 @@ def _vsection(enabled: bool, title: str) -> None:
         print(f"\n=== {title} ===", file=sys.stderr)
 
 
+try:
+    from runner.stream_pretty import (
+        _StreamPrettyState,
+        _format_agent_plain_stream_line,
+        _format_agent_stream_event,
+        _phase_agent_name,
+        flush_stream_state,
+    )
+except ModuleNotFoundError:  # pragma: no cover
+    from stream_pretty import (  # type: ignore[no-redef]
+        _StreamPrettyState,
+        _format_agent_plain_stream_line,
+        _format_agent_stream_event,
+        _phase_agent_name,
+        flush_stream_state,
+    )
+
+
 def _run_capture_stream(
     cmd: list[str],
     *,
@@ -50,6 +68,7 @@ def _run_capture_stream(
     phase: str,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    pretty_timeline: bool = False,
 ) -> subprocess.CompletedProcess:
     proc = subprocess.Popen(
         cmd,
@@ -62,17 +81,46 @@ def _run_capture_stream(
 
     out_parts: list[str] = []
     err_parts: list[str] = []
+    stream_state = _StreamPrettyState(agent_name=_phase_agent_name(phase))
 
     def _drain(pipe: Any, sink: list[str], label: str) -> None:
         try:
             for line in iter(pipe.readline, ""):
                 sink.append(line)
                 if verbose:
+                    if pretty_timeline and label == "stdout":
+                        parsed, rendered, suppress_raw = _format_agent_stream_event(
+                            phase,
+                            line,
+                            state=stream_state,
+                        )
+                        if parsed:
+                            if rendered:
+                                print(rendered, file=sys.stderr)
+                                continue
+                            if suppress_raw:
+                                continue
+                        parsed_plain, rendered_plain = _format_agent_plain_stream_line(
+                            phase, line
+                        )
+                        if parsed_plain:
+                            if rendered_plain:
+                                print(rendered_plain, file=sys.stderr)
+                                continue
                     if line.endswith("\n"):
                         print(f"[{phase}] {label}: {line}", end="", file=sys.stderr)
                     else:
                         print(f"[{phase}] {label}: {line}", file=sys.stderr)
         finally:
+            if (
+                verbose
+                and pretty_timeline
+                and label == "stdout"
+                and stream_state.agent_name == "claude"
+            ):
+                flushed = flush_stream_state(phase, stream_state)
+                if flushed:
+                    print(flushed, file=sys.stderr)
             pipe.close()
 
     assert proc.stdout is not None
@@ -965,6 +1013,7 @@ def _run_agent_in_docker(
         timeout_sec=timeout_sec,
         verbose=verbose,
         phase=f"agent:{agent_name}",
+        pretty_timeline=True,
     )
     return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 
@@ -1049,6 +1098,7 @@ def _run_agent_on_host(
         phase=f"agent:{agent_name}",
         cwd=workdir,
         env=env,
+        pretty_timeline=True,
     )
     return proc, round(time.perf_counter() - t0, 6)
 

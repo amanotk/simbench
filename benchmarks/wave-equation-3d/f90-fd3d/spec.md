@@ -8,8 +8,13 @@ order.
 
 ## Task
 
-Edit `src/wave3d_solver.f90` so that
-`push_wave_3d(u, v, dt, dx, nx, ny, nz)` performs one in-place update step:
+Edit `src/wave3d_solver.f90` so that both boundary and push kernels are implemented.
+
+For `apply_periodic_ghosts(a, nx, ny, nz)`:
+
+- Periodic ghost cells must be updated in all three dimensions
+
+For `push_wave_3d(u, v, dt, dx, nx, ny, nz)`:
 
 - `u` and `v` are first arguments with `intent(inout)`
 - Arrays use Fortran representation with ghost cells: `u(ix, iy, iz)` and `v(ix, iy, iz)`

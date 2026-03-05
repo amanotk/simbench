@@ -211,6 +211,23 @@ with phase+stream prefixes:
 - `[agent:<name>] stdout: ...` and `[agent:<name>] stderr: ...`
 - `[eval] stdout: ...` and `[eval] stderr: ...`
 
+When an agent emits JSONL events (for example, Claude stream-json or Codex JSON
+mode), the runner renders a compact live timeline for agent stdout
+instead of raw JSON lines:
+
+- `[agent:<name>] thinking: ...`
+- `[agent:<name>] tool: ...`
+- `[agent:<name>] text: ...`
+
+The runner uses per-agent formatting hooks for richer display on supported
+agents (currently specialized handlers for Codex and Copilot), while keeping a
+generic fallback for other agents.
+
+If a JSON event shape is not recognized yet, the runner falls back to printing
+that raw stdout line so streaming visibility is not lost.
+
+The raw agent stdout/stderr streams are still preserved in `runs/.../logs/`.
+
 Verbose logs are grouped into sections to improve readability:
 
 - `RUN SETUP`

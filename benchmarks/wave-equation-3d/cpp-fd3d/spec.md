@@ -8,8 +8,13 @@ order.
 
 ## Task
 
-Edit `src/wave3d.cpp` so that
-`push_wave_3d(u, v, dt, dx, nx, ny, nz)` performs one in-place update step:
+Edit `src/wave3d.cpp` so that both boundary and push kernels are implemented.
+
+For `apply_periodic_ghosts(a, nx, ny, nz)`:
+
+- Periodic ghost cells must be updated in all three dimensions
+
+For `push_wave_3d(u, v, dt, dx, nx, ny, nz)`:
 
 - `u` and `v` are the first arguments and are updated in place
 - Storage represents `u(iz, iy, ix)` / `v(iz, iy, ix)` with ghost cells

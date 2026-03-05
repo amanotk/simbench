@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def _apply_periodic_ghosts(a: np.ndarray, nx: int, ny: int, nz: int) -> None:
+def apply_periodic_ghosts(a: np.ndarray, nx: int, ny: int, nz: int) -> None:
     pass
 
 
