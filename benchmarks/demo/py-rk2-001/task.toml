@@ -1,8 +1,0 @@
-id = "py-rk2-001"
-suite = "demo"
-language = "python"
-time_limit_sec = 180
-eval_cmd = "/eval/run.sh"
-prompt = "Read the attached spec.md and solve the task."
-use_shared_workspace = true
-use_shared_eval = true

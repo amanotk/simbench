@@ -202,23 +202,40 @@ The runner prints a compact terminal summary after evaluation:
 - `run_dir`
 
 
-## Verbose Mode
+## Logging Mode
 
-Pass `--verbose` to print internal runner actions (run paths, resolved commands)
-to stderr:
-
-```bash
-python3 runner/bench.py --verbose run sample/opencode.toml <suite>/<task_id>
-```
-
-Verbose mode also streams full process output in real time for both phases,
+The runner prints internal actions (run paths, resolved commands) and streams
+process output in real time by default for both phases,
 with phase+stream prefixes:
 
 - `[agent:<name>] stdout: ...` and `[agent:<name>] stderr: ...`
 - `[eval] stdout: ...` and `[eval] stderr: ...`
+
+When an agent emits JSONL events (for example, Claude stream-json or Codex JSON
+mode), the runner renders a compact live timeline for agent stdout
+instead of raw JSON lines:
+
+- `[agent:<name>] thinking: ...`
+- `[agent:<name>] tool: ...`
+- `[agent:<name>] text: ...`
+
+The runner uses per-agent formatting hooks for richer display on supported
+agents (currently specialized handlers for Codex and Copilot), while keeping a
+generic fallback for other agents.
+
+If a JSON event shape is not recognized yet, the runner falls back to printing
+that raw stdout line so streaming visibility is not lost.
+
+The raw agent stdout/stderr streams are still preserved in `runs/.../logs/`.
 
 Verbose logs are grouped into sections to improve readability:
 
 - `RUN SETUP`
 - `AGENT PHASE`
 - `EVAL PHASE`
+
+Pass `-q` or `--quiet` to suppress these internal logs.
+
+```bash
+python3 runner/bench.py -q run sample/opencode.toml <suite>/<task_id>
+```

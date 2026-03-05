@@ -1,0 +1,8 @@
+id = "py"
+suite = "wave-equation-3d"
+language = "python"
+time_limit_sec = 300
+eval_cmd = "/eval/run.sh"
+prompt = "Read /run/spec.md and /work/description.md, then solve the task in /work."
+use_shared_workspace = true
+use_shared_eval = true

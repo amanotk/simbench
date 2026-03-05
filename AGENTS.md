@@ -43,27 +43,27 @@ Runner basics:
 ```bash
 python3 runner/bench.py list
 python3 runner/bench.py check
-python3 runner/bench.py prepare sample/opencode.toml demo/py-rk2-001
-python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-rk2-001
-python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
-python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image scibench:0.1
+python3 runner/bench.py prepare sample/opencode.toml demo/py
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py
+python3 runner/bench.py run sample/opencode.toml demo/py --image scibench:0.1
+python3 runner/bench.py eval demo/py --workdir /path/to/workdir --image scibench:0.1
 ```
 
 Agent defaults:
 - Model defaults come from merged config (`agents_default.toml` + override TOML).
 - Select which agent runs by passing the corresponding override TOML.
 
-Verbose runner output:
+Quiet runner output (default is verbose):
 
 ```bash
-python3 runner/bench.py --verbose run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py -q run sample/opencode.toml demo/py --image scibench:0.1
 ```
 
 Network tracks:
 
 ```bash
-python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --network on
-python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --network off
+python3 runner/bench.py run sample/opencode.toml demo/py --network on
+python3 runner/bench.py run sample/opencode.toml demo/py --network off
 ```
 
 Public tests (inside an agent shell; these live under `workspace/tests/`):
@@ -75,7 +75,7 @@ pytest -q
 Run tests via the runner's shell command (no need to manually `cd`):
 
 ```bash
-python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py-rk2-001 -- pytest -q
+python3 runner/bench.py shell --image scibench:0.1 sample/opencode.toml demo/py -- pytest -q
 ```
 
 Note: place shell options (like `--image`) before `agents task`, and use `--`
@@ -115,8 +115,8 @@ Formatting (run before commit):
 ```bash
 uvx ruff format runner tests
 uvx ruff check --fix runner tests
-clang-format -i $(git ls-files "*.cpp" "*.hpp")
-uvx fprettify -r benchmarks/demo/f90-rk2-001/workspace/src/*.f90
+clang-format -i $(git ls-files "*.cpp" "*.hpp" ':!:benchmarks/common/include/**')
+uvx fprettify -r benchmarks/demo/f90/workspace/src/*.f90
 ```
 
 Notes:

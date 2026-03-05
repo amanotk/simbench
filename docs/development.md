@@ -65,8 +65,8 @@ python3 -m unittest -q tests.test_runner_bench
 python3 runner/bench.py check
 uvx ruff format runner tests
 uvx ruff check --fix runner tests
-clang-format -i $(git ls-files "*.cpp" "*.hpp")
-uvx fprettify -r benchmarks/demo/f90-rk2-001/workspace/src/*.f90
+clang-format -i $(git ls-files "*.cpp" "*.hpp" ':!:benchmarks/common/include/**')
+uvx fprettify -r benchmarks/demo/f90/workspace/src/*.f90
 ```
 
 ## Branch Protection Recommendations

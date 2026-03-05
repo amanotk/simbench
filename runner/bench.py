@@ -42,6 +42,24 @@ def _vsection(enabled: bool, title: str) -> None:
         print(f"\n=== {title} ===", file=sys.stderr)
 
 
+try:
+    from runner.stream_pretty import (
+        _StreamPrettyState,
+        _format_agent_plain_stream_line,
+        _format_agent_stream_event,
+        _phase_agent_name,
+        flush_stream_state,
+    )
+except ModuleNotFoundError:  # pragma: no cover
+    from stream_pretty import (  # type: ignore[no-redef]
+        _StreamPrettyState,
+        _format_agent_plain_stream_line,
+        _format_agent_stream_event,
+        _phase_agent_name,
+        flush_stream_state,
+    )
+
+
 def _run_capture_stream(
     cmd: list[str],
     *,
@@ -50,6 +68,7 @@ def _run_capture_stream(
     phase: str,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    pretty_timeline: bool = False,
 ) -> subprocess.CompletedProcess:
     proc = subprocess.Popen(
         cmd,
@@ -62,17 +81,46 @@ def _run_capture_stream(
 
     out_parts: list[str] = []
     err_parts: list[str] = []
+    stream_state = _StreamPrettyState(agent_name=_phase_agent_name(phase))
 
     def _drain(pipe: Any, sink: list[str], label: str) -> None:
         try:
             for line in iter(pipe.readline, ""):
                 sink.append(line)
                 if verbose:
+                    if pretty_timeline and label == "stdout":
+                        parsed, rendered, suppress_raw = _format_agent_stream_event(
+                            phase,
+                            line,
+                            state=stream_state,
+                        )
+                        if parsed:
+                            if rendered:
+                                print(rendered, file=sys.stderr)
+                                continue
+                            if suppress_raw:
+                                continue
+                        parsed_plain, rendered_plain = _format_agent_plain_stream_line(
+                            phase, line
+                        )
+                        if parsed_plain:
+                            if rendered_plain:
+                                print(rendered_plain, file=sys.stderr)
+                                continue
                     if line.endswith("\n"):
                         print(f"[{phase}] {label}: {line}", end="", file=sys.stderr)
                     else:
                         print(f"[{phase}] {label}: {line}", file=sys.stderr)
         finally:
+            if (
+                verbose
+                and pretty_timeline
+                and label == "stdout"
+                and stream_state.agent_name == "claude"
+            ):
+                flushed = flush_stream_state(phase, stream_state)
+                if flushed:
+                    print(flushed, file=sys.stderr)
             pipe.close()
 
     assert proc.stdout is not None
@@ -965,6 +1013,7 @@ def _run_agent_in_docker(
         timeout_sec=timeout_sec,
         verbose=verbose,
         phase=f"agent:{agent_name}",
+        pretty_timeline=True,
     )
     return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 
@@ -1049,6 +1098,7 @@ def _run_agent_on_host(
         phase=f"agent:{agent_name}",
         cwd=workdir,
         env=env,
+        pretty_timeline=True,
     )
     return proc, round(time.perf_counter() - t0, 6)
 
@@ -1059,6 +1109,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
+    verbose = not bool(args.quiet)
+
     if "/" not in args.task:
         print("Task must be in the form <suite>/<task_id>", file=sys.stderr)
         return 2
@@ -1103,13 +1155,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
         task.task_toml_path.read_text(encoding="utf-8"), encoding="utf-8"
     )
 
-    _vsection(args.verbose, "RUN SETUP")
-    _vprint(args.verbose, f"run_id={run_id}")
-    _vprint(args.verbose, f"run_dir={run_dir}")
-    _vprint(args.verbose, f"workdir={workdir}")
-    _vprint(args.verbose, f"task={suite}/{task_id}")
+    _vsection(verbose, "RUN SETUP")
+    _vprint(verbose, f"run_id={run_id}")
+    _vprint(verbose, f"run_dir={run_dir}")
+    _vprint(verbose, f"workdir={workdir}")
+    _vprint(verbose, f"task={suite}/{task_id}")
     _vprint(
-        args.verbose,
+        verbose,
         f"image={args.image} network={args.network} timeout_sec={timeout_sec}",
     )
 
@@ -1122,7 +1174,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
             shared_eval_dir=shared_eval_dir,
             network=args.network,
             timeout_sec=timeout_sec,
-            verbose=args.verbose,
+            verbose=verbose,
             cmd_log_path=logs_dir / "eval.docker_cmd.txt",
         )
     except FileNotFoundError as e:
@@ -1239,6 +1291,8 @@ def cmd_shell(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_common(*, args: argparse.Namespace) -> int:
+    verbose = not bool(args.quiet)
+
     if "/" not in args.task:
         print("Task must be in the form <suite>/<task_id>", file=sys.stderr)
         return 2
@@ -1298,7 +1352,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
         model = str(agent_cfg.get("default_model", "")).strip()
         model_source = "default_model"
     if model:
-        _vprint(args.verbose, f"using {model_source} from agents config: {model}")
+        _vprint(verbose, f"using {model_source} from agents config: {model}")
     if not model:
         print(
             f"No model configured. Set model for agent {agent_name!r} in agents config",
@@ -1308,14 +1362,14 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
     if agent_name == "opencode" and "/" not in model:
         before = model
         model = f"openai/{model}"
-        _vprint(args.verbose, f"normalized model for opencode: {before} -> {model}")
+        _vprint(verbose, f"normalized model for opencode: {before} -> {model}")
 
-    _vsection(args.verbose, "RUN SETUP")
-    _vprint(args.verbose, f"run_id={run_id}")
-    _vprint(args.verbose, f"run_dir={run_dir}")
-    _vprint(args.verbose, f"workdir={workdir}")
-    _vprint(args.verbose, f"agent={agent_name} mode={mode}")
-    _vprint(args.verbose, f"agents_config={agents_config_path}")
+    _vsection(verbose, "RUN SETUP")
+    _vprint(verbose, f"run_id={run_id}")
+    _vprint(verbose, f"run_dir={run_dir}")
+    _vprint(verbose, f"workdir={workdir}")
+    _vprint(verbose, f"agent={agent_name} mode={mode}")
+    _vprint(verbose, f"agents_config={agents_config_path}")
 
     default_prompt = (
         "Solve the attached spec. Edit files in the working directory. "
@@ -1326,23 +1380,20 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
     )
 
     prompt = ""
-    if args.prompt:
-        prompt = args.prompt
-    else:
-        prompt_file = str(task.meta.get("prompt_file", "")).strip()
-        if prompt_file:
-            p = task.path / prompt_file
-            if p.exists():
-                prompt = p.read_text(encoding="utf-8").strip()
-            else:
-                print(f"prompt_file not found: {p}", file=sys.stderr)
-                return 2
+    prompt_file = str(task.meta.get("prompt_file", "")).strip()
+    if prompt_file:
+        p = task.path / prompt_file
+        if p.exists():
+            prompt = p.read_text(encoding="utf-8").strip()
+        else:
+            print(f"prompt_file not found: {p}", file=sys.stderr)
+            return 2
 
-        if not prompt:
-            prompt = str(task.meta.get("prompt", "")).strip()
+    if not prompt:
+        prompt = str(task.meta.get("prompt", "")).strip()
 
-        if not prompt:
-            prompt = default_prompt
+    if not prompt:
+        prompt = default_prompt
 
     # Always include pointers so different agent CLIs can locate inputs.
     spec_ptr = "/run/spec.md" if mode == "docker" else str(run_dir / "spec.md")
@@ -1381,7 +1432,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
                 network=args.network,
                 timeout_sec=timeout_sec,
                 extra_env=extra_env,
-                verbose=args.verbose,
+                verbose=verbose,
                 cmd_log_path=logs_dir / "agent.docker_cmd.txt",
             )
         elif mode == "host":
@@ -1393,7 +1444,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
                 model=model,
                 timeout_sec=timeout_sec,
                 extra_env=extra_env,
-                verbose=args.verbose,
+                verbose=verbose,
                 cmd_log_path=logs_dir / "agent.host_cmd.txt",
             )
         else:
@@ -1430,6 +1481,8 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
         return 1
 
     # Evaluate the same workdir using the hidden harness.
+    # Keep eval harness output hidden in default run UX to avoid exposing
+    # hidden test details via streamed stdout/stderr.
     try:
         proc, eval_inner_sec = _run_docker_eval(
             image=args.image,
@@ -1439,7 +1492,7 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
             shared_eval_dir=shared_eval_dir,
             network=args.network,
             timeout_sec=timeout_sec,
-            verbose=args.verbose,
+            verbose=False,
             cmd_log_path=logs_dir / "eval.docker_cmd.txt",
         )
     except FileNotFoundError as e:
@@ -1485,9 +1538,10 @@ def _cmd_agent_common(*, args: argparse.Namespace) -> int:
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="bench")
     p.add_argument(
-        "--verbose",
+        "-q",
+        "--quiet",
         action="store_true",
-        help="Print internal runner actions to stderr",
+        help="Suppress internal runner action logs",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -1506,11 +1560,6 @@ def main(argv: list[str]) -> int:
     p_run = sub.add_parser("run", help="Run agent solve + eval")
     p_run.add_argument("agents", help="Path to single-agent TOML config")
     p_run.add_argument("task", help="Task in the form <suite>/<task_id>")
-    p_run.add_argument(
-        "--prompt",
-        default="",
-        help="Override the one-shot message (otherwise uses task.toml/default)",
-    )
     p_run.add_argument("--image", default="scibench:0.1", help="Docker image tag")
     p_run.add_argument("--network", choices=["on", "off"], default="on")
     p_run.add_argument("--timeout-sec", type=int, default=600)

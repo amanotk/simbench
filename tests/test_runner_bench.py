@@ -244,6 +244,150 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertIn("[test-phase] stdout: hi", streamed)
         self.assertIn("[test-phase] stderr: oops", streamed)
 
+    def test_format_agent_stream_event_parses_thinking_and_tool(self):
+        state = bench._StreamPrettyState(agent_name="dummy")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:dummy",
+            '{"type":"thinking_delta","thinking":"inspect tests"}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:dummy] thinking: inspect tests")
+        self.assertTrue(suppress_raw)
+
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:dummy",
+            '{"type":"tool_call","tool_name":"Bash","status":"started"}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:dummy] tool: Bash (started)")
+        self.assertTrue(suppress_raw)
+
+    def test_format_agent_stream_event_claude_wrapped_stream_event(self):
+        state = bench._StreamPrettyState(agent_name="claude")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:claude",
+            '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan tests."}}}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:claude] thinking: plan tests.")
+        self.assertTrue(suppress_raw)
+
+    def test_format_agent_stream_event_claude_assistant_tool_use(self):
+        state = bench._StreamPrettyState(agent_name="claude")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:claude",
+            '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/run/spec.md"}}]}}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:claude] tool: Read /run/spec.md")
+        self.assertTrue(suppress_raw)
+
+    def test_format_agent_stream_event_claude_tool_start_event(self):
+        state = bench._StreamPrettyState(agent_name="claude")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:claude",
+            '{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","name":"Read"}}}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:claude] tool: Read (start)")
+        self.assertTrue(suppress_raw)
+
+    def test_run_capture_stream_pretty_timeline_renders_json_events(self):
+        err = StringIO()
+        script = (
+            "import json\n"
+            "print(json.dumps({'type':'thinking_delta','thinking':'plan next step'}))\n"
+            "print(json.dumps({'type':'tool_call','tool_name':'Bash','status':'started'}))\n"
+            "print(json.dumps({'type':'progress','step':1}))\n"
+            "print('plain stdout')\n"
+        )
+        with redirect_stderr(err):
+            proc = bench._run_capture_stream(
+                ["python3", "-c", script],
+                timeout_sec=10,
+                verbose=True,
+                phase="agent:dummy",
+                pretty_timeline=True,
+            )
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("thinking_delta", proc.stdout)
+        self.assertIn("tool_call", proc.stdout)
+        streamed = err.getvalue()
+        self.assertIn("[agent:dummy] thinking: plan next step", streamed)
+        self.assertIn("[agent:dummy] tool: Bash (started)", streamed)
+        self.assertIn('[agent:dummy] stdout: {"type": "progress", "step": 1}', streamed)
+        self.assertIn("[agent:dummy] stdout: plain stdout", streamed)
+        self.assertNotIn('[agent:dummy] stdout: {"type": "thinking_delta"', streamed)
+
+    def test_format_agent_stream_event_codex_specialized_labels(self):
+        state = bench._StreamPrettyState(agent_name="codex")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:codex",
+            '{"type":"reasoning_delta","summary":"inspect failing test"}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:codex] plan: inspect failing test")
+        self.assertTrue(suppress_raw)
+
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:codex",
+            '{"type":"exec_command_begin","command":"pytest -q","status":"started"}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:codex] tool: pytest -q (started)")
+        self.assertTrue(suppress_raw)
+
+    def test_format_agent_stream_event_codex_item_wrapper(self):
+        state = bench._StreamPrettyState(agent_name="codex")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:codex",
+            '{"type":"item.started","item":{"type":"command_execution","command":"/usr/bin/bash -lc ls","status":"in_progress"}}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(
+            rendered,
+            "[agent:codex] tool: /usr/bin/bash -lc ls (in_progress)",
+        )
+        self.assertTrue(suppress_raw)
+
+    def test_format_agent_stream_event_copilot_permission_label(self):
+        state = bench._StreamPrettyState(agent_name="copilot")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:copilot",
+            '{"type":"permission_request","tool_name":"shell","status":"waiting"}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertEqual(rendered, "[agent:copilot] permission: shell (waiting)")
+        self.assertTrue(suppress_raw)
+
+    def test_run_capture_stream_pretty_timeline_formats_copilot_plain_lines(self):
+        err = StringIO()
+        script = "print('Thinking: inspect tests')\nprint('Running pytest -q')\n"
+        with redirect_stderr(err):
+            proc = bench._run_capture_stream(
+                ["python3", "-c", script],
+                timeout_sec=10,
+                verbose=True,
+                phase="agent:copilot",
+                pretty_timeline=True,
+            )
+
+        self.assertEqual(proc.returncode, 0)
+        streamed = err.getvalue()
+        self.assertIn("[agent:copilot] thinking: inspect tests", streamed)
+        self.assertIn("[agent:copilot] tool: Running pytest -q", streamed)
+        self.assertNotIn("[agent:copilot] stdout: Thinking:", streamed)
+
     def test_model_options_render_args(self):
         args = bench._model_options_to_args(
             {
@@ -461,7 +605,7 @@ cmd = "true"
             self.assertTrue((run_dir / "prompt.txt").exists())
             self.assertTrue((run_dir / "logs" / "agent.forwarded_env.txt").exists())
 
-    def test_verbose_prints_result_summary(self):
+    def test_default_logging_prints_result_summary(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             bench_root = td_path / "benchmarks"
@@ -522,6 +666,8 @@ name = "opencode"
                 )
 
             def fake_eval(*, workdir: Path, **_kwargs):
+                seen_eval_verbose = _kwargs.get("verbose")
+                self.assertFalse(seen_eval_verbose)
                 (workdir / "result.json").write_text(
                     json.dumps(
                         {
@@ -558,7 +704,6 @@ name = "opencode"
                 with redirect_stdout(out), redirect_stderr(err):
                     rc = bench.main(
                         [
-                            "--verbose",
                             "run",
                             str(agents_toml),
                             "s/t",

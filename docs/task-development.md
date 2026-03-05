@@ -53,7 +53,7 @@ suite = "<suite>"
 language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
-prompt = "Read the attached spec.md and solve the task."
+prompt = "Read /run/spec.md and solve the task in /work."
 use_shared_workspace = false
 use_shared_eval = false
 ```
@@ -97,6 +97,17 @@ chmod +x benchmarks/<suite>/<task_id>/eval/run.sh
 - Put developer-facing tests in `workspace/tests/` so agents can run them.
 - Put authoritative checks in `eval/tests/` and call them from `eval/run.sh`.
 - The agent container gets `workspace` at `/work`, but not `/eval`.
+
+
+## Python array convention
+
+For Python numerical tasks, use `numpy.ndarray` as the solver state type.
+Do not use nested Python lists for numerical state in task APIs or tests.
+
+If a task needs this convention, state it explicitly in `spec.md`.
+
+For C++ numerical tasks, prefer `std::mdspan` with default C-style layout
+(`layout_right`) for multidimensional state unless the task says otherwise.
 
 
 ## Authoring workflow

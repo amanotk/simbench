@@ -43,12 +43,12 @@ Optional keys:
 Example:
 
 ```toml
-id = "py-rk2-001"
+id = "py"
 suite = "demo"
 language = "python"
 time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
-prompt = "Read the attached spec.md and solve the task."
+prompt = "Read /run/spec.md and solve the task in /work."
 use_shared_workspace = false
 use_shared_eval = false
 ```
@@ -100,3 +100,12 @@ python3 runner/bench.py check <suite>/<task_id>
 
 The checker validates required paths, key metadata fields, and common pitfalls
 (missing `eval/run.sh`, non-executable evaluator, malformed structure).
+
+
+## Language conventions
+
+- Python numerical tasks should use `numpy.ndarray` for solver state.
+- Avoid nested Python lists as numerical state in task APIs and tests.
+- For C++ multidimensional numerical state, prefer `std::mdspan` with default
+  C-style layout (`layout_right`) unless a task explicitly specifies otherwise.
+- Fortran tasks may use natural Fortran multidimensional arrays.

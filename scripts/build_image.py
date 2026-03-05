@@ -15,6 +15,9 @@ MDSPAN_REF = "mdspan-0.6.0"
 XTL_REF = "0.8.2"
 XSIMD_REF = "14.0.0"
 XTENSOR_REF = "0.27.1"
+TOML11_REF = "v4.4.0"
+FORTRAN_STDLIB_REF = "v0.6.1"
+TOML_F_REF = "v0.4.2"
 FACE_REV = "1455c549ae0c1ead96961ca61a73131d8176b6a4"
 PENF_REV = "a519e6cb58873efa85a81b4cf0a547870f510629"
 FLAP_INSTALL_SHA256 = "c99e294dda30fc9c69d9ec796c954a05b79cc1874110f10178432f217aee3663"
@@ -49,6 +52,12 @@ def main(argv: list[str]) -> int:
         f"XSIMD_REF={XSIMD_REF}",
         "--build-arg",
         f"XTENSOR_REF={XTENSOR_REF}",
+        "--build-arg",
+        f"TOML11_REF={TOML11_REF}",
+        "--build-arg",
+        f"FORTRAN_STDLIB_REF={FORTRAN_STDLIB_REF}",
+        "--build-arg",
+        f"TOML_F_REF={TOML_F_REF}",
         "--build-arg",
         f"FACE_REV={FACE_REV}",
         "--build-arg",

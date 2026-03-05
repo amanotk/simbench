@@ -1,6 +1,6 @@
 # Scientific Coding Benchmark for LLM Models
 
-This repo provides an agentic coding benchmark for scientific tasks.
+This repository provides a framework for scientific coding benchmarks targeting LLM-based agents.
 
 ## Requirements
 
@@ -22,10 +22,14 @@ Notes:
 
 Configured in `agents_default.toml` (with per-agent overrides under `sample/*.toml`):
 
-- `opencode`
-- `claude`
-- `codex`
-- `copilot`
+- OpenCode (`opencode`)
+- Claude Code (`claude`)
+- Codex (`codex`)
+- Github Copilot (`copilot`)
+
+## Available Benchmarks
+- Demo benchmark for Runge-Kutta 2 (RK2) midpoint method.
+- 3D wave equation solver with finite difference method.
 
 ## Quick Start
 
@@ -48,29 +52,27 @@ python3 runner/bench.py list
 python3 runner/bench.py check
 ```
 
-Run a task (explicit `run` subcommand):
+Run a task:
 
 ```bash
-python3 runner/bench.py run sample/opencode.toml demo/py-rk2-001 --image scibench:0.1
+python3 runner/bench.py run sample/opencode.toml demo/py --image scibench:0.1
 ```
 
 Eval only:
 
 ```bash
-python3 runner/bench.py eval demo/py-rk2-001 --workdir /path/to/workdir --image scibench:0.1
+python3 runner/bench.py eval demo/py --workdir /path/to/workdir --image scibench:0.1
 ```
 
-## Repo Layout
+## Repository Layout
 
-- `benchmarks/<suite>/<task_id>/spec.md`: task statement
-- `benchmarks/<suite>/<task_id>/task.toml`: task metadata
-- `benchmarks/<suite>/<task_id>/workspace/`: template workspace
-- `benchmarks/<suite>/<task_id>/eval/`: hidden evaluator
+- `benchmarks/<suite>`: benchmark suites
+- `docs/`: documentation
 - `runner/bench.py`: runner CLI
 - `agents_default.toml`: default agent config
 - `sample/*.toml`: sample per-agent overrides
 
-## Docs
+## Documentation
 
 - `docs/development.md`: developer workflow, branching, and CI policy
 - `docs/toolchain.md`: default Docker toolchain and preinstalled libraries
