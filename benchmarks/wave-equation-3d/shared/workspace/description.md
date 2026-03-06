@@ -51,9 +51,10 @@ Use centered Gaussian initial displacement with zero initial velocity:
 
 ```math
 u_0(x,y,z) = \exp\left(-\frac{(x-0.5)^2 + (y-0.5)^2 + (z-0.5)^2}{2\sigma^2}\right),\quad
-\sigma = 0.1,
-\quad v_0(x,y,z)=0.
+v_0(x,y,z)=0,
 ```
+where $\sigma = 0.1$ controls the width of the Gaussian.  
+Strictly speaking, the initial condition for $v$ should be defined at the half time step ahead of $u$, but for simplicity, we can initialize $v^{1/2}$ to zero.
 
 Use cell-centered grid coordinates:
 
