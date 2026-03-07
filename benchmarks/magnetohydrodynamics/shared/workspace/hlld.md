@@ -254,7 +254,7 @@ v^{\ast\ast}
 +
 \sqrt{\rho_R^\ast} v_R^\ast
 +
-(B_{y,R}^\ast - B_{y,L}^\ast)\operatorname{sgn}(B_x)
+(B_{y,R}^\ast - B_{y,L}^\ast)\mathrm{sgn}(B_x)
 }{
 \sqrt{\rho_L^\ast} + \sqrt{\rho_R^\ast}
 },
@@ -268,7 +268,7 @@ w^{\ast\ast}
 +
 \sqrt{\rho_R^\ast} w_R^\ast
 +
-(B_{z,R}^\ast - B_{z,L}^\ast)\operatorname{sgn}(B_x)
+(B_{z,R}^\ast - B_{z,L}^\ast)\mathrm{sgn}(B_x)
 }{
 \sqrt{\rho_L^\ast} + \sqrt{\rho_R^\ast}
 },
@@ -282,7 +282,7 @@ B_y^{\ast\ast}
 +
 \sqrt{\rho_R^\ast} B_{y,L}^\ast
 +
-\sqrt{\rho_L^\ast\rho_R^\ast}(v_R^\ast - v_L^\ast)\operatorname{sgn}(B_x)
+\sqrt{\rho_L^\ast\rho_R^\ast}(v_R^\ast - v_L^\ast)\mathrm{sgn}(B_x)
 }{
 \sqrt{\rho_L^\ast} + \sqrt{\rho_R^\ast}
 },
@@ -296,7 +296,7 @@ B_z^{\ast\ast}
 +
 \sqrt{\rho_R^\ast} B_{z,L}^\ast
 +
-\sqrt{\rho_L^\ast\rho_R^\ast}(w_R^\ast - w_L^\ast)\operatorname{sgn}(B_x)
+\sqrt{\rho_L^\ast\rho_R^\ast}(w_R^\ast - w_L^\ast)\mathrm{sgn}(B_x)
 }{
 \sqrt{\rho_L^\ast} + \sqrt{\rho_R^\ast}
 }.
@@ -314,7 +314,7 @@ E_L^\ast
 \mathbf{v}_L^\ast\cdot\mathbf{B}_L^\ast
 -
 \mathbf{v}^{\ast\ast}\cdot\mathbf{B}^{\ast\ast}
-\right)\operatorname{sgn}(B_x),
+\right)\mathrm{sgn}(B_x),
 ```
 
 ```math
@@ -327,7 +327,7 @@ E_R^\ast
 \mathbf{v}_R^\ast\cdot\mathbf{B}_R^\ast
 -
 \mathbf{v}^{\ast\ast}\cdot\mathbf{B}^{\ast\ast}
-\right)\operatorname{sgn}(B_x).
+\right)\mathrm{sgn}(B_x).
 ```
 
 Here
