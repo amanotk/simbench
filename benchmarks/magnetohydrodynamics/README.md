@@ -13,3 +13,8 @@ This suite contains benchmark tasks for ideal magnetohydrodynamics solvers.
 - Shared workspace files are visible to the agent during benchmark runs.
 - Keep maintainer-only derivations, generators, and hidden fixtures outside the
   shared workspace.
+
+## Reference credit
+
+- The hidden HLLD reference implementation is adapted closely from  
+  `https://github.com/chiba-aplab/cansplus`

@@ -21,6 +21,10 @@ The benchmark uses:
 - flux ordering: `[F_rho, F_mx, F_my, F_mz, F_E, F_By, F_Bz]`
 - Lorentz-Heaviside units
 - `Bx` passed separately from the state vectors
+- the test suite includes `Bx = 0` hydro and magnetized degenerate cases
+- the test suite also includes a small-`Bx` near-degenerate case, so handle
+  `Bx = 0`, small denominators in the starred-state formulas, and related
+  square-root/discriminant edge cases carefully
 
 Do not change the public function signatures in `src/hlld.hpp`.
 

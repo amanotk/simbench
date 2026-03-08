@@ -42,28 +42,15 @@ p_T^\ast = \text{constant}.
 
 ## Outer wave speeds
 
-Use the standard HLL estimate
+Use the following wave-speed estimate for the outer waves $S_L$ and $S_R$.
 
 ```math
-S_L = \min(u_L - c_{f,L},\, u_R - c_{f,R}),
+S_L=\min(u_L,u_R)-\max(c_{f,L},c_{f,R})
 \qquad
-S_R = \max(u_L + c_{f,L},\, u_R + c_{f,R}).
+S_R=\max(u_L,u_R)+\max(c_{f,L},c_{f,R})
 ```
 
-If
-
-```math
-0 \le S_L,
-```
-
-return the left physical flux.  
-If
-
-```math
-S_R \le 0,
-```
-
-return the right physical flux.
+This wave-speed estimate is part of the benchmark convention.
 
 ## Contact speed and total pressure
 
@@ -408,9 +395,29 @@ to the location of zero in the wave fan:
 All fluxes use the conservative component ordering defined in  
 `basic_equations.md`.
 
-## Robustness expectations
+## Implementation notes
+
+- This benchmark follows one specific HLLD implementation convention rather than
+  an arbitrary mathematically equivalent variant.
+
+- Small starred-state denominator
+  If $|D_\alpha|$ is extremely small, do not apply the raw starred-state update
+  by dividing through that value. Instead, replace the starred transverse
+  updates with:
+  ```math
+  v_\alpha^\ast = v_\alpha, \quad
+  w_\alpha^\ast = w_\alpha, \quad
+  B_{y,\alpha}^\ast = B_{y,\alpha}, \quad
+  B_{z,\alpha}^\ast = B_{z,\alpha}.
+  ```
+
+- Small $B_x$
+  When $B_x=0$, the rotational waves collapse and the double-star regions become
+  unnecessary. In that case, do not use the double-star states for flux
+  calculation.
+
+  For this benchmark, a merely small nonzero $|B_x|$ should still be treated as
+  a nondegenerate case unless some other guarded quantity, such as $D_\alpha$,
+  becomes numerically singular.
 
 - Assume all benchmark inputs are admissible physical states.
-- Keep arithmetic finite and deterministic on the benchmark cases.
-- The primitive-state entry point and conservative-state entry point should
-  return the same numerical flux for equivalent left/right states.
