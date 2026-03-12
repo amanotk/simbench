@@ -485,6 +485,17 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertEqual(rendered, "[agent:claude] tool: Read (start)")
         self.assertTrue(suppress_raw)
 
+    def test_format_agent_stream_event_claude_message_start_is_suppressed(self):
+        state = bench._StreamPrettyState(agent_name="claude")
+        parsed, rendered, suppress_raw = bench._format_agent_stream_event(
+            "agent:claude",
+            '{"type":"stream_event","event":{"type":"message_start","message":{"role":"assistant","content":[]}}}\n',
+            state=state,
+        )
+        self.assertTrue(parsed)
+        self.assertIsNone(rendered)
+        self.assertTrue(suppress_raw)
+
     def test_format_agent_stream_event_claude_result_event(self):
         state = bench._StreamPrettyState(agent_name="claude")
         parsed, rendered, suppress_raw = bench._format_agent_stream_event(
@@ -525,6 +536,28 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertIn('[agent:dummy] stdout: {"type": "progress", "step": 1}', streamed)
         self.assertIn("[agent:dummy] stdout: plain stdout", streamed)
         self.assertNotIn('[agent:dummy] stdout: {"type": "thinking_delta"', streamed)
+
+    def test_run_capture_stream_pretty_timeline_suppresses_claude_message_start(self):
+        err = StringIO()
+        script = (
+            "import json\n"
+            "print(json.dumps({'type':'stream_event','event':{'type':'message_start','message':{'role':'assistant','content':[]}}}))\n"
+            "print(json.dumps({'type':'stream_event','event':{'type':'content_block_delta','delta':{'type':'thinking_delta','thinking':'plan tests.'}}}))\n"
+        )
+        with redirect_stderr(err):
+            proc = bench._run_capture_stream(
+                ["python3", "-c", script],
+                timeout_sec=10,
+                verbose=True,
+                phase="agent:claude",
+                pretty_timeline=True,
+            )
+
+        self.assertEqual(proc.returncode, 0)
+        streamed = err.getvalue()
+        self.assertIn("[agent:claude] thinking: plan tests.", streamed)
+        self.assertNotIn("message_start", streamed)
+        self.assertNotIn('[agent:claude] stdout: {"type": "stream_event"', streamed)
 
     def test_format_agent_stream_event_codex_specialized_labels(self):
         state = bench._StreamPrettyState(agent_name="codex")

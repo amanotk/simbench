@@ -498,6 +498,9 @@ def _format_claude_stream_event(
         event = obj["event"]
         event_type = str(event.get("type", "")).strip().lower()
 
+        if event_type == "message_start":
+            return True, None, True
+
         if event_type == "content_block_start":
             block = event.get("content_block")
             if isinstance(block, dict):
