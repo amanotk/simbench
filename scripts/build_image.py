@@ -21,7 +21,6 @@ FORTRAN_STDLIB_REF = "v0.6.1"
 TOML_F_REF = "v0.4.2"
 FACE_REV = "1455c549ae0c1ead96961ca61a73131d8176b6a4"
 PENF_REV = "a519e6cb58873efa85a81b4cf0a547870f510629"
-FLAP_INSTALL_SHA256 = "c99e294dda30fc9c69d9ec796c954a05b79cc1874110f10178432f217aee3663"
 
 
 def _cmd_str(cmd: list[str]) -> str:
@@ -65,8 +64,6 @@ def main(argv: list[str]) -> int:
         f"FACE_REV={FACE_REV}",
         "--build-arg",
         f"PENF_REV={PENF_REV}",
-        "--build-arg",
-        f"FLAP_INSTALL_SHA256={FLAP_INSTALL_SHA256}",
     ]
     if args.no_cache:
         cmd.append("--no-cache")
