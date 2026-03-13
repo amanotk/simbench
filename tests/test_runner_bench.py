@@ -2201,6 +2201,33 @@ class TestAgentBinaries(unittest.TestCase):
 
 
 class TestOpenCodeSmoke(unittest.TestCase):
+    def _require_docker_image_with_opencode(self, image: str) -> None:
+        inspect = subprocess.run(
+            ["docker", "image", "inspect", image],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=30,
+        )
+        if inspect.returncode != 0:
+            self.skipTest(
+                f"Docker image {image} not found locally; set SIMBENCH_SKIP_OPENCODE_SMOKE=1 to suppress this smoke test explicitly"
+            )
+
+        probe = subprocess.run(
+            ["docker", "run", "--rm", image, "bash", "-lc", "command -v opencode"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=30,
+        )
+        if probe.returncode != 0:
+            self.skipTest(
+                f"OpenCode CLI not available inside {image}; set SIMBENCH_SKIP_OPENCODE_SMOKE=1 to suppress this smoke test explicitly"
+            )
+
     def test_run_uses_fake_opencode_end_to_end(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
@@ -2381,6 +2408,7 @@ model = "opencode/big-pickle"
 
         repo_root = Path(__file__).resolve().parents[1]
         sample_cfg = repo_root / "sample" / "opencode-smoke.toml"
+        self._require_docker_image_with_opencode("simbench:0.1")
         with tempfile.TemporaryDirectory() as td:
             result_dir = Path(td) / "run"
             out = StringIO()
