@@ -44,9 +44,9 @@ target_link_libraries(your_tests PRIVATE Catch2::Catch2WithMain)
 
 ## Fortran Utility Libraries
 
-FLAP is installed from release `v1.2.16` with dependencies FACE and PENF.
-FACE/PENF are pinned to the exact revisions used by FLAP's `fpm.toml` for
-deterministic builds.
+FLAP is built from the pinned `v1.2.16` source tarball with dependencies FACE
+and PENF vendored explicitly during image build. FACE/PENF are pinned to the
+exact revisions used by FLAP's `fpm.toml` for deterministic builds.
 
 Additional Fortran libraries:
 

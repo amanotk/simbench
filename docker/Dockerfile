@@ -13,7 +13,6 @@ ARG FORTRAN_STDLIB_REF=v0.6.1
 ARG TOML_F_REF=v0.4.2
 ARG FACE_REV=1455c549ae0c1ead96961ca61a73131d8176b6a4
 ARG PENF_REV=a519e6cb58873efa85a81b4cf0a547870f510629
-ARG FLAP_INSTALL_SHA256=c99e294dda30fc9c69d9ec796c954a05b79cc1874110f10178432f217aee3663
 
 # Keep numerical performance reproducible-ish by default.
 ENV OMP_NUM_THREADS=1 \
@@ -83,11 +82,9 @@ RUN apt-get update \
   && cmake --build /tmp/toml-f-build -j"$(nproc)" \
   && cmake --install /tmp/toml-f-build \
   && rm -rf /tmp/toml-f-src /tmp/toml-f-build \
-  && curl -LsSf -o /tmp/flap-install.sh "https://github.com/szaghi/FLAP/releases/download/v${FLAP_VERSION}/install.sh" \
-  && echo "${FLAP_INSTALL_SHA256}  /tmp/flap-install.sh" | sha256sum -c - \
-  && chmod +x /tmp/flap-install.sh \
-  && cd /tmp \
-  && bash /tmp/flap-install.sh --repo szaghi/FLAP --download wget --tag "v${FLAP_VERSION}" \
+  && mkdir -p "/tmp/FLAP-v${FLAP_VERSION}" \
+  && curl -LsSf "https://api.github.com/repos/szaghi/FLAP/tarball/refs/tags/v${FLAP_VERSION}" \
+    | tar -xz --strip-components=1 -C "/tmp/FLAP-v${FLAP_VERSION}" \
   && mkdir -p "/tmp/FLAP-v${FLAP_VERSION}/src/third_party/FACE" \
   && curl -LsSf "https://api.github.com/repos/szaghi/FACE/tarball/${FACE_REV}" \
     | tar -xz --strip-components=1 -C "/tmp/FLAP-v${FLAP_VERSION}/src/third_party/FACE" \
@@ -97,7 +94,7 @@ RUN apt-get update \
   && cmake -S "/tmp/FLAP-v${FLAP_VERSION}" -B /tmp/flap-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
   && cmake --build /tmp/flap-build -j"$(nproc)" \
   && cmake --install /tmp/flap-build \
-  && rm -rf /tmp/flap-install.sh /tmp/flap-build "/tmp/FLAP-v${FLAP_VERSION}" \
+  && rm -rf /tmp/flap-build "/tmp/FLAP-v${FLAP_VERSION}" \
   && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
   && uv pip install --system --break-system-packages --no-cache ruff fprettify \
   && npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex @github/copilot \
