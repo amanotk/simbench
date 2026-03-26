@@ -735,7 +735,9 @@ def _format_agent_plain_stream_line(phase: str, line: str) -> tuple[bool, str | 
         if low.startswith("thinking:"):
             msg = _clean_stream_text(stripped.split(":", 1)[1].strip())
             return True, f"[{phase}] thinking: {msg}"
-        if low.startswith(("implementation complete", "completed:", "summary:")):
+        if low.startswith(
+            ("implementation complete", "completed:", "summary:", "done.")
+        ):
             msg = stripped.split(":", 1)[1].strip() if ":" in stripped else stripped
             msg = _clean_stream_text(msg)
             return True, f"[{phase}] text: {msg}"
@@ -748,6 +750,12 @@ def _format_agent_plain_stream_line(phase: str, line: str) -> tuple[bool, str | 
         if low.startswith(("using tool", "tool:", "running ", "executing ")):
             msg = _clean_stream_text(stripped)
             return True, f"[{phase}] tool: {msg}"
+        if stripped.startswith("● "):
+            msg = _clean_stream_text(stripped[2:].strip())
+            return True, f"[{phase}] tool: {msg}"
+        if stripped.startswith(("$ ", "└ ")):
+            msg = _clean_stream_text(stripped[2:].strip())
+            return True, f"[{phase}] status: {msg}"
         if low.startswith(("status", "progress", "step")):
             msg = stripped.split(":", 1)[1].strip() if ":" in stripped else stripped
             msg = _clean_stream_text(msg)
@@ -756,5 +764,8 @@ def _format_agent_plain_stream_line(phase: str, line: str) -> tuple[bool, str | 
             msg = stripped.split(":", 1)[1].strip() if ":" in stripped else stripped
             msg = _clean_stream_text(msg)
             return True, f"[{phase}] error: {msg}"
+        if not stripped.startswith("__BENCH_"):
+            msg = _clean_stream_text(stripped)
+            return True, f"[{phase}] text: {msg}"
 
     return False, None

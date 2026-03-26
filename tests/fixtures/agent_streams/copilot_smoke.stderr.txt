@@ -1,0 +1,7 @@
+
+Total usage est:        0 Premium requests
+API time spent:         21s
+Total session time:     25s
+Total code changes:     +1 -1
+Breakdown by AI model:
+ gpt-4.1                 70.8k in, 157 out, 47.4k cached (Est. 0 Premium requests)

@@ -97,6 +97,7 @@ jobs:
 
       - name: Runner unit tests
         env:
+          SIMBENCH_SKIP_OPENCODE_SMOKE: '1'
           COPILOT_GITHUB_TOKEN: ${{ matrix.python-version == '3.11' && secrets.COPILOT_GITHUB_TOKEN || '' }}
           SIMBENCH_SKIP_COPILOT_SMOKE: ${{ matrix.python-version != '3.11' && '1' || '' }}
         run: python3 -m unittest -q tests.test_runner_bench

@@ -136,6 +136,13 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertEqual(metrics["agent_cached_input_tokens"], 445056)
         self.assertEqual(metrics["agent_cache_creation_input_tokens"], 0)
 
+    def test_extract_agent_usage_metrics_for_opencode_golden_output(self):
+        stdout = _fixture_text("opencode_smoke.stdout.txt")
+
+        metrics = bench._extract_agent_usage_metrics("opencode", stdout)
+
+        self.assertEqual(metrics, {})
+
     def test_extract_agent_usage_metrics_for_claude_result(self):
         stdout = "\n".join(
             [
@@ -206,6 +213,16 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertEqual(metrics["agent_output_tokens"], 6700)
         self.assertEqual(metrics["agent_cached_input_tokens"], 249900)
         self.assertEqual(metrics["agent_usage_model"], "gpt-5-mini")
+
+    def test_extract_agent_usage_metrics_for_copilot_golden_output(self):
+        stderr = _fixture_text("copilot_smoke.stderr.txt")
+
+        metrics = bench._extract_agent_usage_metrics("copilot", "", stderr)
+
+        self.assertEqual(metrics["agent_input_tokens"], 70800)
+        self.assertEqual(metrics["agent_output_tokens"], 157)
+        self.assertEqual(metrics["agent_cached_input_tokens"], 47400)
+        self.assertEqual(metrics["agent_usage_model"], "gpt-4.1")
 
     def test_extract_opencode_stats_metrics(self):
         stdout = "\n".join(
@@ -783,6 +800,31 @@ class TestBenchHelpers(unittest.TestCase):
         self.assertIn("[agent:claude] tool: Bash pytest -q", rendered)
         self.assertIn("[agent:claude] text: All tests pass.", rendered)
         self.assertNotIn('[agent:claude] stdout: {"type":"result"', rendered)
+
+    def test_replay_pretty_stdout_for_opencode_golden_output(self):
+        rendered_lines = _replay_pretty_stdout(
+            "opencode", _fixture_text("opencode_smoke.stdout.txt")
+        )
+        rendered = "\n".join(rendered_lines)
+
+        self.assertIn(
+            "[agent:opencode] text: Done. The function now returns `a + b`",
+            rendered,
+        )
+        self.assertNotIn('[agent:opencode] stdout: {"type":"result"', rendered)
+
+    def test_replay_pretty_stdout_for_copilot_golden_output(self):
+        rendered_lines = _replay_pretty_stdout(
+            "copilot", _fixture_text("copilot_smoke.stdout.txt")
+        )
+        rendered = "\n".join(rendered_lines)
+
+        self.assertIn("[agent:copilot] tool: Read /run/spec.md", rendered)
+        self.assertIn("[agent:copilot] tool: Edit src/add.py (+1 -1)", rendered)
+        self.assertIn(
+            "[agent:copilot] text: The function add_numbers in src/add.py was updated",
+            rendered,
+        )
 
     def test_model_options_render_args(self):
         args = bench._model_options_to_args(

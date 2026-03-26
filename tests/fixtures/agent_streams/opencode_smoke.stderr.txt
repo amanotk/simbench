@@ -1,0 +1,23 @@
+Performing one time database migration, may take a few minutes...
+sqlite-migration:done
+Database migration complete.
+[0m
+> build · big-pickle
+[0m
+[0m→ [0mRead work/src/add.py
+[0m
+[0m← [0mEdit work/src/add.py
+Index: /work/src/add.py
+===================================================================
+--- /work/src/add.py
++++ /work/src/add.py
+@@ -1,2 +1,2 @@
+ def add_numbers(a, b):
+-    return 0
++    return a + b
+
+[0m
+[0m$ [0mpytest -q
+..                                                                       [100%]
+2 passed in 0.01s
+[0m
