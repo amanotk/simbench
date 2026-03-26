@@ -2677,7 +2677,7 @@ class TestCopilotSmoke(SmokeTestHelpers, unittest.TestCase):
                 result,
                 task="smoke/py",
                 agent="copilot",
-                model="gpt-5-mini",
+                model="gpt-4.1",
                 agent_exit_code=0,
                 eval_exit_code=0,
             )
@@ -2685,7 +2685,7 @@ class TestCopilotSmoke(SmokeTestHelpers, unittest.TestCase):
             self.assertIn("agent_input_tokens", result["metrics"])
             self.assertIn("agent_output_tokens", result["metrics"])
             self.assertIn("agent_cached_input_tokens", result["metrics"])
-            self.assertEqual(result["metrics"].get("agent_usage_model"), "gpt-5-mini")
+            self.assertEqual(result["metrics"].get("agent_usage_model"), "gpt-4.1")
 
             agent_stdout = (result_dir / "logs" / "agent.stdout.txt").read_text(
                 encoding="utf-8"

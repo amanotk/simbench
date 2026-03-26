@@ -1,6 +1,6 @@
 id = "py"
 suite = "smoke"
 language = "python"
-time_limit_sec = 60
+time_limit_sec = 120
 eval_cmd = "/eval/run.sh"
 prompt = "Read /run/spec.md and solve the task in /work."

@@ -95,6 +95,7 @@ Runner smoke tests:
 - Set `SIMBENCH_SKIP_OPENCODE_SMOKE=1` to skip the live OpenCode smoke run.
 - Set `SIMBENCH_SKIP_COPILOT_SMOKE=1` to skip the live Copilot smoke run.
 - Set `COPILOT_GITHUB_TOKEN` for token-only Copilot CLI auth.
+- The Copilot smoke config uses `gpt-4.1` for a faster, more stable smoke run.
 - CI runs the live OpenCode smoke by default.
 - CI runs the live Copilot smoke on `py3.11` when `COPILOT_GITHUB_TOKEN` is available.
 - CI pulls `ghcr.io/amanotk/simbench:<head-branch>` for PRs when available, falls back to `ghcr.io/amanotk/simbench:develop`, and otherwise builds locally.
