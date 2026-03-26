@@ -26,7 +26,21 @@ Repo map (core):
 
 ## Build / Lint / Test Commands
 
-Build the unified Docker image:
+For normal local use, pull the published GHCR image and tag it as
+`simbench:0.1`:
+
+```bash
+docker pull ghcr.io/amanotk/simbench:develop
+docker tag ghcr.io/amanotk/simbench:develop simbench:0.1
+```
+
+If the package is not publicly accessible to you, authenticate first:
+
+```bash
+docker login ghcr.io
+```
+
+Build the unified Docker image locally only if needed:
 
 ```bash
 python3 scripts/build_image.py

@@ -52,13 +52,16 @@ Optional heavier check:
 
 Toolchain image publishing:
 
-- GitHub Actions publishes `ghcr.io/<owner>/simbench:<branch>` on pushes to
+- GitHub Actions publishes `ghcr.io/amanotk/simbench:<branch>` on pushes to
   `develop` and `main`.
 - CI pulls the published image for runner tests when the toolchain is unchanged.
 - Pull request CI tries the head-branch image first, then `develop`, before
   rebuilding locally.
 - If `docker/Dockerfile` or `scripts/build_image.py` changes in a branch, CI
   rebuilds `simbench:0.1` locally instead of pulling a stale registry image.
+
+If a developer cannot pull the package directly, authenticate with
+`docker login ghcr.io` before pulling from GHCR.
 
 ## Local Developer Workflow
 

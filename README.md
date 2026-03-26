@@ -33,17 +33,28 @@ Configured in `agents_default.toml` (with per-agent overrides under `sample/*.to
 
 ## Quick Start
 
-Build image:
-
-```bash
-python3 scripts/build_image.py
-```
+By default, pull the published GHCR toolchain image for local use. This repo
+publishes `ghcr.io/amanotk/simbench:develop` for the shared `develop`
+toolchain. Build the image locally only if you need a custom toolchain or you
+have changed `docker/Dockerfile` or `scripts/build_image.py`.
 
 Published toolchain image:
 
 ```bash
-docker pull ghcr.io/<owner>/simbench:develop
-docker tag ghcr.io/<owner>/simbench:develop simbench:0.1
+docker pull ghcr.io/amanotk/simbench:develop
+docker tag ghcr.io/amanotk/simbench:develop simbench:0.1
+```
+
+If the package is not publicly accessible to you, authenticate first:
+
+```bash
+docker login ghcr.io
+```
+
+Build locally only if needed:
+
+```bash
+python3 scripts/build_image.py
 ```
 
 Direct Docker build (fallback):
@@ -76,7 +87,7 @@ Runner smoke tests:
 - `python3 -m unittest -q tests.test_runner_bench.TestOpenCodeSmoke`
 - Set `SIMBENCH_SKIP_OPENCODE_SMOKE=1` to skip the live OpenCode smoke run.
 - CI runs the live OpenCode smoke by default.
-- CI pulls `ghcr.io/<owner>/simbench:<head-branch>` for PRs when available, falls back to `ghcr.io/<owner>/simbench:develop`, and otherwise builds locally.
+- CI pulls `ghcr.io/amanotk/simbench:<head-branch>` for PRs when available, falls back to `ghcr.io/amanotk/simbench:develop`, and otherwise builds locally.
 
 Eval only:
 

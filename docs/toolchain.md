@@ -1,10 +1,26 @@
 # Toolchain Reference
 
 This document describes what is available by default in the benchmark Docker
-image (`simbench:0.1`). A published copy is also available from GHCR as
-`ghcr.io/<owner>/simbench:<branch>`.
+image (`simbench:0.1`). For normal local use, pull the published GHCR image
+instead of building it yourself. This repo publishes
+`ghcr.io/amanotk/simbench:develop` for the shared `develop` toolchain. Build
+locally only if you need a custom toolchain or you have changed
+`docker/Dockerfile` or `scripts/build_image.py`.
 
-Build the image with:
+Pull and tag the published image with:
+
+```bash
+docker pull ghcr.io/amanotk/simbench:develop
+docker tag ghcr.io/amanotk/simbench:develop simbench:0.1
+```
+
+If the package is not publicly accessible to you, authenticate first:
+
+```bash
+docker login ghcr.io
+```
+
+Build the image locally with:
 
 ```bash
 python3 scripts/build_image.py
