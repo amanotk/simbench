@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = REPO_ROOT / "docker" / "Dockerfile"
 
 FLAP_VERSION = "1.2.16"
+OPENCODE_VERSION = "1.3.3"
 CATCH2_REF = "v3.13.0"
 MDSPAN_REF = "mdspan-0.6.0"
 XTL_REF = "0.8.2"
@@ -44,6 +45,8 @@ def main(argv: list[str]) -> int:
         str(DOCKERFILE),
         "--build-arg",
         f"FLAP_VERSION={FLAP_VERSION}",
+        "--build-arg",
+        f"OPENCODE_VERSION={OPENCODE_VERSION}",
         "--build-arg",
         f"CATCH2_REF={CATCH2_REF}",
         "--build-arg",

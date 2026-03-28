@@ -3,6 +3,7 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG FLAP_VERSION=1.2.16
+ARG OPENCODE_VERSION=1.3.3
 ARG CATCH2_REF=v3.13.0
 ARG MDSPAN_REF=mdspan-0.6.0
 ARG XTL_REF=0.8.2
@@ -97,7 +98,7 @@ RUN apt-get update \
   && rm -rf /tmp/flap-build "/tmp/FLAP-v${FLAP_VERSION}" \
   && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
   && uv pip install --system --break-system-packages --no-cache ruff fprettify \
-  && npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex @github/copilot \
+  && npm install -g opencode-ai@${OPENCODE_VERSION} @anthropic-ai/claude-code @openai/codex @github/copilot \
   && uv --version
 
 WORKDIR /work

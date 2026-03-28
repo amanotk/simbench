@@ -1814,7 +1814,9 @@ name = "opencode"
 
             def fake_subprocess_run(cmd, **kwargs):
                 if cmd == ["opencode", "stats", "--models", "1"]:
-                    self.assertIn("XDG_DATA_HOME", kwargs["env"])
+                    self.assertTrue(
+                        str(kwargs["env"].get("HOME", "")).endswith("/.opencode-data")
+                    )
                     return subprocess.CompletedProcess(
                         cmd, 0, stdout=stats_output, stderr=""
                     )

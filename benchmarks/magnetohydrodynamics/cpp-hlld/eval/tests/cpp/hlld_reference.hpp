@@ -11,8 +11,8 @@
 namespace hidden_reference
 {
 
-inline FluxState hlld_flux_from_primitive(const PrimitiveState& left, const PrimitiveState& right,
-                                          double bx, double gamma)
+inline StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right,
+                                            double bx, double gamma)
 {
   constexpr double eps = 1.0e-40;
 
@@ -66,20 +66,20 @@ inline FluxState hlld_flux_from_primitive(const PrimitiveState& left, const Prim
   const double sl = std::min(vxl, vxr) - std::max(cfl, cfr);
   const double sr = std::max(vxl, vxr) + std::max(cfl, cfr);
 
-  const FluxState fql{rxl,
-                      rxl * vxl + ptl - bxsq,
-                      rxl * vyl - bxs * byl,
-                      rxl * vzl - bxs * bzl,
-                      vxl * (eel + ptl - bxsq) - bxs * (vyl * byl + vzl * bzl),
-                      byl * vxl - bxs * vyl,
-                      bzl * vxl - bxs * vzl};
-  const FluxState fqr{rxr,
-                      rxr * vxr + ptr - bxsq,
-                      rxr * vyr - bxs * byr,
-                      rxr * vzr - bxs * bzr,
-                      vxr * (eer + ptr - bxsq) - bxs * (vyr * byr + vzr * bzr),
-                      byr * vxr - bxs * vyr,
-                      bzr * vxr - bxs * vzr};
+  const StateVector fql{rxl,
+                        rxl * vxl + ptl - bxsq,
+                        rxl * vyl - bxs * byl,
+                        rxl * vzl - bxs * bzl,
+                        vxl * (eel + ptl - bxsq) - bxs * (vyl * byl + vzl * bzl),
+                        byl * vxl - bxs * vyl,
+                        bzl * vxl - bxs * vzl};
+  const StateVector fqr{rxr,
+                        rxr * vxr + ptr - bxsq,
+                        rxr * vyr - bxs * byr,
+                        rxr * vzr - bxs * bzr,
+                        vxr * (eer + ptr - bxsq) - bxs * (vyr * byr + vzr * bzr),
+                        byr * vxr - bxs * vyr,
+                        bzr * vxr - bxs * vzr};
 
   const double sdl   = sl - vxl;
   const double sdr   = sr - vxr;
@@ -197,7 +197,7 @@ inline FluxState hlld_flux_from_primitive(const PrimitiveState& left, const Prim
   const double temp_flux_l = mslst - msl;
   const double temp_flux_r = msrst - msr;
 
-  return FluxState{
+  return StateVector{
       (fql[0] - msl * rol - rolst * temp_flux_l + roldst * mslst) * maxs1 +
           (fqr[0] - msr * ror - rorst * temp_flux_r + rordst * msrst) * mins1,
       (fql[1] - msl * rxl - rxlst * temp_flux_l + rxldst * mslst) * maxs1 +
@@ -215,11 +215,10 @@ inline FluxState hlld_flux_from_primitive(const PrimitiveState& left, const Prim
   };
 }
 
-inline FluxState hlld_flux_from_conservative(const ConservativeState& left,
-                                             const ConservativeState& right, double bx,
-                                             double gamma)
+inline StateVector hlld_flux_from_conservative(const StateVector& left, const StateVector& right,
+                                               double bx, double gamma)
 {
-  const auto to_primitive = [bx, gamma](const ConservativeState& state) {
+  const auto to_primitive = [bx, gamma](const StateVector& state) {
     const double rho      = state[0];
     const double u        = state[1] / rho;
     const double v        = state[2] / rho;
@@ -229,7 +228,7 @@ inline FluxState hlld_flux_from_conservative(const ConservativeState& left,
     const double kinetic  = 0.5 * rho * (u * u + v * v + w * w);
     const double magnetic = 0.5 * (bx * bx + by * by + bz * bz);
     const double p        = (gamma - 1.0) * (state[4] - kinetic - magnetic);
-    return PrimitiveState{rho, u, v, w, p, by, bz};
+    return StateVector{rho, u, v, w, p, by, bz};
   };
 
   return hlld_flux_from_primitive(to_primitive(left), to_primitive(right), bx, gamma);

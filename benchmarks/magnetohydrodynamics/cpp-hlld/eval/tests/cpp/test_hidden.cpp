@@ -19,7 +19,7 @@ namespace
 
 constexpr double kTolerance = 1e-12;
 
-ConservativeState primitive_to_conservative(const PrimitiveState& state, double bx, double gamma)
+StateVector primitive_to_conservative(const StateVector& state, double bx, double gamma)
 {
   const double rho = state[0];
   const double u   = state[1];
@@ -33,12 +33,12 @@ ConservativeState primitive_to_conservative(const PrimitiveState& state, double 
   const double magnetic = 0.5 * (bx * bx + by * by + bz * bz);
   const double energy   = p / (gamma - 1.0) + kinetic + magnetic;
 
-  return ConservativeState{
+  return StateVector{
       rho, rho * u, rho * v, rho * w, energy, by, bz,
   };
 }
 
-FluxState physical_flux_x(const ConservativeState& state, double bx, double gamma)
+StateVector physical_flux_x(const StateVector& state, double bx, double gamma)
 {
   const double rho    = state[0];
   const double mx     = state[1];
@@ -56,7 +56,7 @@ FluxState physical_flux_x(const ConservativeState& state, double bx, double gamm
   const double pressure       = (gamma - 1.0) * (energy - kinetic - magnetic);
   const double total_pressure = pressure + magnetic;
 
-  return FluxState{
+  return StateVector{
       rho * u,
       rho * u * u + total_pressure - bx * bx,
       rho * v * u - bx * by,
@@ -67,7 +67,7 @@ FluxState physical_flux_x(const ConservativeState& state, double bx, double gamm
   };
 }
 
-void require_close(const FluxState& actual, const FluxState& expected)
+void require_close(const StateVector& actual, const StateVector& expected)
 {
   for (std::size_t i = 0; i < actual.size(); ++i) {
     REQUIRE(std::abs(actual[i] - expected[i]) <= kTolerance);
@@ -78,13 +78,13 @@ void require_close(const FluxState& actual, const FluxState& expected)
 
 TEST_CASE("equal conservative states reduce to the physical flux")
 {
-  const double            bx    = 0.35;
-  const double            gamma = 1.4;
-  const PrimitiveState    primitive{0.9, -0.45, 0.2, 0.15, 0.8, -0.3, 0.55};
-  const ConservativeState state = primitive_to_conservative(primitive, bx, gamma);
+  const double      bx    = 0.35;
+  const double      gamma = 1.4;
+  const StateVector primitive{0.9, -0.45, 0.2, 0.15, 0.8, -0.3, 0.55};
+  const StateVector state = primitive_to_conservative(primitive, bx, gamma);
 
-  const FluxState actual   = hlld_flux_from_conservative(state, state, bx, gamma);
-  const FluxState expected = physical_flux_x(state, bx, gamma);
+  const StateVector actual   = hlld_flux_from_conservative(state, state, bx, gamma);
+  const StateVector expected = physical_flux_x(state, bx, gamma);
 
   require_close(actual, expected);
 }
@@ -94,10 +94,10 @@ TEST_CASE("nontrivial primitive solve returns finite values")
   const double bx    = -0.65;
   const double gamma = 5.0 / 3.0;
 
-  const PrimitiveState left{1.08, 0.45, -0.12, 0.08, 0.95, 0.4, -0.3};
-  const PrimitiveState right{0.72, -0.25, 0.16, -0.05, 0.58, -0.2, 0.35};
+  const StateVector left{1.08, 0.45, -0.12, 0.08, 0.95, 0.4, -0.3};
+  const StateVector right{0.72, -0.25, 0.16, -0.05, 0.58, -0.2, 0.35};
 
-  const FluxState flux = hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector flux = hlld_flux_from_primitive(left, right, bx, gamma);
 
   for (double value : flux) {
     REQUIRE(std::isfinite(value));
@@ -109,11 +109,11 @@ TEST_CASE("hidden reference flux case 1 matches reference implementation")
   const double bx    = -0.65;
   const double gamma = 5.0 / 3.0;
 
-  const PrimitiveState left{1.08, 0.45, -0.12, 0.08, 0.95, 0.4, -0.3};
-  const PrimitiveState right{0.72, -0.25, 0.16, -0.05, 0.58, -0.2, 0.35};
-  const FluxState expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector left{1.08, 0.45, -0.12, 0.08, 0.95, 0.4, -0.3};
+  const StateVector right{0.72, -0.25, 0.16, -0.05, 0.58, -0.2, 0.35};
+  const StateVector expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
 
-  const FluxState actual = hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector actual = hlld_flux_from_primitive(left, right, bx, gamma);
   require_close(actual, expected);
 }
 
@@ -122,11 +122,11 @@ TEST_CASE("hidden reference flux case 2 matches reference implementation")
   const double bx    = 0.35;
   const double gamma = 1.4;
 
-  const PrimitiveState left{0.9, -0.45, 0.2, 0.15, 0.8, -0.3, 0.55};
-  const PrimitiveState right{1.15, 0.18, -0.12, -0.08, 1.05, 0.22, -0.4};
-  const FluxState expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector left{0.9, -0.45, 0.2, 0.15, 0.8, -0.3, 0.55};
+  const StateVector right{1.15, 0.18, -0.12, -0.08, 1.05, 0.22, -0.4};
+  const StateVector expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
 
-  const FluxState actual = hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector actual = hlld_flux_from_primitive(left, right, bx, gamma);
   require_close(actual, expected);
 }
 
@@ -135,11 +135,11 @@ TEST_CASE("small Bx near-degenerate reference case matches reference implementat
   const double bx    = 1.0e-6;
   const double gamma = 1.4;
 
-  const PrimitiveState left{1.0, 0.4, 0.2, -0.1, 1.0, 0.5, -0.4};
-  const PrimitiveState right{0.85, -0.3, -0.15, 0.25, 0.8, -0.35, 0.45};
-  const FluxState expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector left{1.0, 0.4, 0.2, -0.1, 1.0, 0.5, -0.4};
+  const StateVector right{0.85, -0.3, -0.15, 0.25, 0.8, -0.35, 0.45};
+  const StateVector expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
 
-  const FluxState actual = hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector actual = hlld_flux_from_primitive(left, right, bx, gamma);
   require_close(actual, expected);
 }
 
@@ -148,10 +148,10 @@ TEST_CASE("second Bx equals zero hydro case matches reference implementation")
   const double bx    = 0.0;
   const double gamma = 1.4;
 
-  const PrimitiveState left{0.4, -1.1, 0.0, 0.0, 0.4, 0.0, 0.0};
-  const PrimitiveState right{1.2, -0.2, 0.0, 0.0, 1.3, 0.0, 0.0};
-  const FluxState expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector left{0.4, -1.1, 0.0, 0.0, 0.4, 0.0, 0.0};
+  const StateVector right{1.2, -0.2, 0.0, 0.0, 1.3, 0.0, 0.0};
+  const StateVector expected = hidden_reference::hlld_flux_from_primitive(left, right, bx, gamma);
 
-  const FluxState actual = hlld_flux_from_primitive(left, right, bx, gamma);
+  const StateVector actual = hlld_flux_from_primitive(left, right, bx, gamma);
   require_close(actual, expected);
 }
