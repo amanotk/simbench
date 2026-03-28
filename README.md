@@ -90,8 +90,8 @@ python3 runner/bench.py run sample/copilot-smoke.toml test:smoke/py --image simb
 
 Runner smoke tests:
 
-- `python3 -m unittest -q tests.test_runner_bench.TestOpenCodeSmoke`
-- `python3 -m unittest -q tests.test_runner_bench.TestCopilotSmoke`
+- `python3 -m unittest -q tests.test_runner_smoke.TestOpenCodeSmoke`
+- `python3 -m unittest -q tests.test_runner_smoke.TestCopilotSmoke`
 - Set `SIMBENCH_SKIP_OPENCODE_SMOKE=1` to skip the live OpenCode smoke run.
 - Set `SIMBENCH_SKIP_COPILOT_SMOKE=1` to skip the live Copilot smoke run.
 - Set `COPILOT_GITHUB_TOKEN` for token-only Copilot CLI auth.

@@ -134,13 +134,23 @@ Notes:
 Runner tests:
 
 ```bash
-python3 -m unittest -q tests.test_runner_bench
+python3 -m unittest -q tests.test_runner_smoke
+python3 -m unittest -q tests.test_runner_helpers
+python3 -m unittest -q tests.test_runner_cli_flow
+python3 -m unittest -q tests.test_runner_check_cmd
+python3 -m unittest -q tests.test_runner_bench_adversarial
+```
+
+Run all runner tests:
+
+```bash
+python3 -m unittest -q discover -s tests -p 'test_runner_*.py'
 ```
 
 Run a single test:
 
 ```bash
-python3 -m unittest -q tests.test_runner_bench.TestBenchHelpers.test_expand_path
+python3 -m unittest -q tests.test_runner_helpers.TestBenchHelpers.test_expand_path
 ```
 
 Timeouts:

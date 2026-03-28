@@ -41,7 +41,7 @@ Current policy for CI jobs:
 Recommended required checks:
 
 - `python3 -m py_compile runner/bench.py`
-- `python3 -m unittest -q tests.test_runner_bench`
+- `python3 -m unittest -q discover -s tests -p 'test_runner_*.py'`
 - `python3 runner/bench.py check`
 - formatting checks for Python/C++/Fortran sources
 
@@ -75,7 +75,7 @@ Run local checks before opening PR:
 
 ```bash
 python3 -m py_compile runner/bench.py
-python3 -m unittest -q tests.test_runner_bench
+python3 -m unittest -q discover -s tests -p 'test_runner_*.py'
 python3 runner/bench.py check
 uvx ruff format runner tests
 uvx ruff check --fix runner tests

@@ -49,8 +49,14 @@ cp /tmp/simbench-claude-capture/logs/agent.stdout.txt tests/fixtures/agent_strea
 cp /tmp/simbench-claude-capture/logs/agent.stderr.txt tests/fixtures/agent_streams/claude_smoke.stderr.txt
 ```
 
-After updating fixtures, run:
+After updating fixtures, run the smoke tests to verify parser coverage:
 
 ```bash
-python3 -m unittest -q tests.test_runner_bench
+python3 -m unittest -q tests.test_runner_smoke
+```
+
+Or run all runner tests:
+
+```bash
+python3 -m unittest -q discover -s tests -p 'test_runner_*.py'
 ```

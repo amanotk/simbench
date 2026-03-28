@@ -2,28 +2,15 @@
 
 import argparse
 import datetime as _dt
-import decimal
 import json
 import os
-import re
 import secrets
-import shlex
 import shutil
 import subprocess
 import sys
-import threading
 import time
 from typing import Any, Callable
-from dataclasses import dataclass
 from pathlib import Path
-
-try:
-    import tomllib as _toml_lib  # type: ignore[attr-defined]
-except ModuleNotFoundError:  # pragma: no cover - fallback for Python <3.11
-    try:
-        import tomli as _toml_lib  # type: ignore[no-redef]
-    except ModuleNotFoundError:  # pragma: no cover
-        _toml_lib = None  # type: ignore[assignment]
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,21 +31,78 @@ def _vsection(enabled: bool, title: str) -> None:
 
 
 try:
-    from runner.stream_pretty import (
-        _StreamPrettyState,
-        _format_agent_plain_stream_line,
-        _format_agent_stream_event,
-        _phase_agent_name,
-        flush_stream_state,
-    )
+    from runner import results_helpers as _results_helpers
 except ModuleNotFoundError:  # pragma: no cover
-    from stream_pretty import (  # type: ignore[no-redef]
-        _StreamPrettyState,
-        _format_agent_plain_stream_line,
-        _format_agent_stream_event,
-        _phase_agent_name,
-        flush_stream_state,
-    )
+    import results_helpers as _results_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import execution_helpers as _execution_helpers
+except ModuleNotFoundError:  # pragma: no cover
+    import execution_helpers as _execution_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import stream_pretty as _stream_pretty
+except ModuleNotFoundError:  # pragma: no cover
+    import stream_pretty as _stream_pretty  # type: ignore[no-redef]
+
+try:
+    from runner import metrics_helpers as _metrics_helpers
+except ModuleNotFoundError:  # pragma: no cover
+    import metrics_helpers as _metrics_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import task_loading_helpers as _task_loading_helpers
+except ModuleNotFoundError:  # pragma: no cover
+    import task_loading_helpers as _task_loading_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import config_helpers as _config_helpers
+except ModuleNotFoundError:  # pragma: no cover
+    import config_helpers as _config_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import docker_runner_helpers as _docker_runner_helpers
+except ModuleNotFoundError:  # pragma: no cover
+    import docker_runner_helpers as _docker_runner_helpers  # type: ignore[no-redef]
+
+try:
+    from runner import execution_agent as _execution_agent
+except ModuleNotFoundError:  # pragma: no cover
+    import execution_agent as _execution_agent  # type: ignore[no-redef]
+
+_append_metric = _results_helpers._append_metric
+_annotate_result_metadata = _results_helpers._annotate_result_metadata
+_format_kilotokens = _results_helpers._format_kilotokens
+_format_summary_metric = _results_helpers._format_summary_metric
+_json_line_objects = _results_helpers._json_line_objects
+_merge_metrics = _results_helpers._merge_metrics
+_print_result_summary = _results_helpers._print_result_summary
+_run_started_at = _results_helpers._run_started_at
+_set_metric_value = _results_helpers._set_metric_value
+_write_failure_result = _results_helpers._write_failure_result
+
+_usage_metrics_from_usage_dict = _metrics_helpers._usage_metrics_from_usage_dict
+_COPILOT_MODEL_BREAKDOWN_RE = _metrics_helpers._COPILOT_MODEL_BREAKDOWN_RE
+_OPENCODE_STATS_VALUE_RE = _metrics_helpers._OPENCODE_STATS_VALUE_RE
+_parse_human_token_count = _metrics_helpers._parse_human_token_count
+_extract_copilot_usage_metrics = _metrics_helpers._extract_copilot_usage_metrics
+_extract_boxed_stat_value = _metrics_helpers._extract_boxed_stat_value
+_extract_opencode_stats_metrics = _metrics_helpers._extract_opencode_stats_metrics
+_collect_opencode_usage_metrics = _metrics_helpers._collect_opencode_usage_metrics
+_extract_agent_usage_metrics = _metrics_helpers._extract_agent_usage_metrics
+_merge_metric_dicts = _metrics_helpers._merge_metric_dicts
+_fill_missing_metric_dicts = _metrics_helpers._fill_missing_metric_dicts
+_collect_postrun_agent_usage_metrics = (
+    _metrics_helpers._collect_postrun_agent_usage_metrics
+)
+
+_StreamPrettyState = _stream_pretty._StreamPrettyState
+_format_agent_stream_event = _stream_pretty._format_agent_stream_event
+_format_agent_plain_stream_line = _stream_pretty._format_agent_plain_stream_line
+_phase_agent_name = _stream_pretty._phase_agent_name
+flush_stream_state = _stream_pretty.flush_stream_state
+
+Task = _task_loading_helpers.Task
 
 
 def _run_capture_stream(
@@ -72,839 +116,103 @@ def _run_capture_stream(
     pretty_timeline: bool = False,
     timeout_cleanup: Callable[[], None] | None = None,
 ) -> subprocess.CompletedProcess:
-    proc = subprocess.Popen(
+    return _execution_helpers._run_capture_stream(
         cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        timeout_sec=timeout_sec,
+        verbose=verbose,
+        phase=phase,
         cwd=cwd,
         env=env,
-    )
-
-    out_parts: list[str] = []
-    err_parts: list[str] = []
-    stream_state = _StreamPrettyState(agent_name=_phase_agent_name(phase))
-
-    def _drain(pipe: Any, sink: list[str], label: str) -> None:
-        try:
-            for line in iter(pipe.readline, ""):
-                sink.append(line)
-                if verbose:
-                    if pretty_timeline and label == "stdout":
-                        parsed, rendered, suppress_raw = _format_agent_stream_event(
-                            phase,
-                            line,
-                            state=stream_state,
-                        )
-                        if parsed:
-                            if rendered:
-                                print(rendered, file=sys.stderr)
-                                continue
-                            if suppress_raw:
-                                continue
-                        parsed_plain, rendered_plain = _format_agent_plain_stream_line(
-                            phase, line
-                        )
-                        if parsed_plain:
-                            if rendered_plain:
-                                print(rendered_plain, file=sys.stderr)
-                                continue
-                    if line.endswith("\n"):
-                        print(f"[{phase}] {label}: {line}", end="", file=sys.stderr)
-                    else:
-                        print(f"[{phase}] {label}: {line}", file=sys.stderr)
-        finally:
-            if (
-                verbose
-                and pretty_timeline
-                and label == "stdout"
-                and stream_state.agent_name == "claude"
-            ):
-                flushed = flush_stream_state(phase, stream_state)
-                if flushed:
-                    print(flushed, file=sys.stderr)
-            pipe.close()
-
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-    t_out = threading.Thread(
-        target=_drain, args=(proc.stdout, out_parts, "stdout"), daemon=True
-    )
-    t_err = threading.Thread(
-        target=_drain, args=(proc.stderr, err_parts, "stderr"), daemon=True
-    )
-    t_out.start()
-    t_err.start()
-
-    try:
-        rc = proc.wait(timeout=timeout_sec)
-    except subprocess.TimeoutExpired as e:
-        proc.kill()
-        proc.wait()
-        if timeout_cleanup is not None:
-            try:
-                timeout_cleanup()
-            except Exception as cleanup_err:  # pragma: no cover
-                err_parts.append(f"[runner] timeout cleanup failed: {cleanup_err}\n")
-        t_out.join()
-        t_err.join()
-        raise subprocess.TimeoutExpired(
-            cmd=e.cmd,
-            timeout=e.timeout,
-            output="".join(out_parts),
-            stderr="".join(err_parts),
-        ) from None
-    except KeyboardInterrupt:
-        proc.kill()
-        proc.wait()
-        if timeout_cleanup is not None:
-            try:
-                timeout_cleanup()
-            except Exception as cleanup_err:  # pragma: no cover
-                err_parts.append(f"[runner] timeout cleanup failed: {cleanup_err}\n")
-        t_out.join()
-        t_err.join()
-        raise
-
-    t_out.join()
-    t_err.join()
-    return subprocess.CompletedProcess(
-        cmd,
-        rc,
-        stdout="".join(out_parts),
-        stderr="".join(err_parts),
+        pretty_timeline=pretty_timeline,
+        timeout_cleanup=timeout_cleanup,
+        subprocess_mod=subprocess,
     )
 
 
-def _normalize_model_options(
-    agent_name: str, agent_cfg: dict[str, Any]
-) -> dict[str, Any]:
-    raw = agent_cfg.get("model_options", {})
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"Agent {agent_name!r} model_options must be an object")
-    return dict(raw)
+_normalize_model_options = _config_helpers._normalize_model_options
+_model_options_to_args = _config_helpers._model_options_to_args
+_model_options_env = _config_helpers._model_options_env
+_inject_model_options_args = _config_helpers._inject_model_options_args
 
 
-def _model_options_to_args(options: dict[str, Any]) -> str:
-    tokens: list[str] = []
-    for key in sorted(options.keys()):
-        val = options[key]
-        if val is None:
-            continue
-        flag = f"--{str(key).replace('_', '-')}"
-        if isinstance(val, bool):
-            tokens.append(flag)
-            tokens.append("true" if val else "false")
-        elif isinstance(val, (int, float, str)):
-            tokens.append(flag)
-            tokens.append(str(val))
-        else:
-            tokens.append(flag)
-            tokens.append(json.dumps(val, separators=(",", ":"), sort_keys=True))
-    return " ".join(shlex.quote(tok) for tok in tokens)
-
-
-def _model_options_env(options: dict[str, Any]) -> dict[str, str]:
-    out: dict[str, str] = {
-        "BENCH_MODEL_OPTIONS_JSON": json.dumps(
-            options, separators=(",", ":"), sort_keys=True
-        ),
-        "BENCH_MODEL_OPTIONS_ARGS": _model_options_to_args(options),
-    }
-    for key, val in options.items():
-        env_key = (
-            "BENCH_MODEL_OPT_"
-            + "".join(ch if ch.isalnum() else "_" for ch in str(key)).upper()
-        )
-        if val is None:
-            continue
-        if isinstance(val, (dict, list)):
-            out[env_key] = json.dumps(val, separators=(",", ":"), sort_keys=True)
-        elif isinstance(val, bool):
-            out[env_key] = "true" if val else "false"
-        else:
-            out[env_key] = str(val)
-    return out
-
-
-def _inject_model_options_args(cmd: str, options: dict[str, Any]) -> str:
-    rendered = _model_options_to_args(options)
-    return cmd.replace("${BENCH_MODEL_OPTIONS_ARGS}", rendered).replace(
-        "$BENCH_MODEL_OPTIONS_ARGS", rendered
-    )
-
-
-def _print_result_summary(task_ref: str, run_dir: Path, result: dict[str, Any]) -> None:
-    status = result.get("status", "unknown")
-    score = result.get("score", None)
-
-    print(f"[{task_ref}] Result")
-    print(f"- status: {status}")
-    print(f"- score: {score}")
-    run_id = result.get("run_id")
-    if isinstance(run_id, str) and run_id.strip():
-        print(f"- run_id: {run_id}")
-    started_at = result.get("started_at")
-    if isinstance(started_at, str) and started_at.strip():
-        print(f"- started_at: {started_at}")
-    task = result.get("task")
-    if isinstance(task, str) and task.strip():
-        print(f"- task: {task}")
-    agent = result.get("agent")
-    if isinstance(agent, str) and agent.strip():
-        print(f"- agent: {agent}")
-    model = result.get("model")
-    if isinstance(model, str) and model.strip():
-        print(f"- model: {model}")
-    agent_exit_code = result.get("agent_exit_code")
-    if agent_exit_code is not None:
-        print(f"- agent_exit_code: {agent_exit_code}")
-    eval_exit_code = result.get("eval_exit_code")
-    if eval_exit_code is not None:
-        print(f"- eval_exit_code: {eval_exit_code}")
-
-    metrics = result.get("metrics")
-    if isinstance(metrics, dict) and metrics:
-        print("- metrics:")
-        for key in sorted(metrics.keys()):
-            print(f"  {key}: {_format_summary_metric(key, metrics[key])}")
-
-    print(f"- run_dir: {run_dir}")
-
-    agent_path = run_dir / "agent.toml"
-    if agent_path.exists() and agent_path.is_file() and _toml_lib is not None:
-        try:
-            agent_cfg = _toml_lib.loads(agent_path.read_text(encoding="utf-8"))
-        except Exception:
-            agent_cfg = {}
-        if isinstance(agent_cfg, dict):
-            print("- agent")
-            name = agent_cfg.get("name")
-            if isinstance(name, str) and name.strip():
-                print(f'  name: "{name}"')
-            model = agent_cfg.get("model")
-            if isinstance(model, str) and model.strip():
-                print(f'  model: "{model}"')
-            model_options = agent_cfg.get("model_options")
-            if isinstance(model_options, dict) and model_options:
-                for key in sorted(model_options.keys()):
-                    val = model_options[key]
-                    if isinstance(val, str):
-                        rendered = f'"{val}"'
-                    elif isinstance(val, bool):
-                        rendered = "true" if val else "false"
-                    elif isinstance(val, (int, float)):
-                        rendered = str(val)
-                    else:
-                        rendered = json.dumps(
-                            val, ensure_ascii=True, separators=(",", ":")
-                        )
-                    print(f"  {key}: {rendered}")
-
-
-def _format_kilotokens(value: int | float) -> str:
-    return f"{float(value) / 1000.0:.1f}k"
-
-
-def _format_summary_metric(key: str, value: Any) -> Any:
-    if isinstance(value, (int, float)) and "token" in key:
-        return _format_kilotokens(value)
-    return value
-
-
-_INNER_SEC_RE = re.compile(r"^__BENCH_INNER_SEC__=([0-9]+(?:\.[0-9]+)?)$", re.MULTILINE)
-_TIMEPOINT_RE = re.compile(
-    r"^__(BENCH_T0|BENCH_T1)__=([0-9]+(?:\.[0-9]+)?)$", re.MULTILINE
-)
-
-
-def _timed_bash_script(cmd: str) -> str:
-    return (
-        'if [ -n "${EPOCHREALTIME:-}" ]; then __bench_t0="$EPOCHREALTIME"; '
-        'else __bench_t0="$(date +%s.%N 2>/dev/null || date +%s)"; fi; '
-        f"({cmd}); __bench_rc=$?; "
-        'if [ -n "${EPOCHREALTIME:-}" ]; then __bench_t1="$EPOCHREALTIME"; '
-        'else __bench_t1="$(date +%s.%N 2>/dev/null || date +%s)"; fi; '
-        'printf "__BENCH_T0__=%s\\n__BENCH_T1__=%s\\n" "$__bench_t0" "$__bench_t1"; '
-        'exit "$__bench_rc"'
-    )
-
-
-def _extract_inner_sec(*texts: str) -> float | None:
-    t0: decimal.Decimal | None = None
-    t1: decimal.Decimal | None = None
-
-    for text in texts:
-        if not text:
-            continue
-        for kind, value in _TIMEPOINT_RE.findall(text):
-            try:
-                parsed = decimal.Decimal(value)
-            except decimal.InvalidOperation:
-                continue
-            if kind == "BENCH_T0":
-                t0 = parsed
-            elif kind == "BENCH_T1":
-                t1 = parsed
-
-    if t0 is not None and t1 is not None:
-        dt = t1 - t0
-        if dt < 0:
-            return 0.0
-        return float(dt)
-
-    for text in texts:
-        if not text:
-            continue
-        m = _INNER_SEC_RE.search(text)
-        if not m:
-            continue
-        try:
-            return float(m.group(1))
-        except ValueError:
-            return None
-    return None
-
-
-def _append_metric(result: dict[str, Any], key: str, value: float | None) -> None:
-    if value is None:
-        return
-    metrics = result.get("metrics")
-    if not isinstance(metrics, dict):
-        metrics = {}
-    metrics[key] = round(float(value), 6)
-    result["metrics"] = metrics
-
-
-def _set_metric_value(result: dict[str, Any], key: str, value: Any) -> None:
-    metrics = result.get("metrics")
-    if not isinstance(metrics, dict):
-        metrics = {}
-    metrics[key] = value
-    result["metrics"] = metrics
-
-
-def _json_line_objects(text: str) -> list[dict[str, Any]]:
-    objs: list[dict[str, Any]] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or not line.startswith("{"):
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            objs.append(obj)
-    return objs
-
-
-def _usage_metrics_from_usage_dict(usage: dict[str, Any]) -> dict[str, Any]:
-    metrics: dict[str, Any] = {}
-
-    if isinstance(usage.get("input_tokens"), int):
-        metrics["agent_input_tokens"] = usage["input_tokens"]
-    if isinstance(usage.get("output_tokens"), int):
-        metrics["agent_output_tokens"] = usage["output_tokens"]
-
-    cached = usage.get("cached_input_tokens")
-    if not isinstance(cached, int):
-        cached = usage.get("cache_read_input_tokens")
-    if isinstance(cached, int):
-        metrics["agent_cached_input_tokens"] = cached
-
-    cache_create = usage.get("cache_creation_input_tokens")
-    if isinstance(cache_create, int):
-        metrics["agent_cache_creation_input_tokens"] = cache_create
-
-    return metrics
-
-
-_COPILOT_MODEL_BREAKDOWN_RE = re.compile(
-    r"^\s*(?P<model>\S+)\s+"
-    r"(?P<input>[0-9][0-9.,]*[kKmM]?)\s+in,\s+"
-    r"(?P<output>[0-9][0-9.,]*[kKmM]?)\s+out,\s+"
-    r"(?P<cached>[0-9][0-9.,]*[kKmM]?)\s+cached",
-    re.MULTILINE,
-)
-
-
-def _parse_human_token_count(raw: str) -> int | None:
-    s = raw.strip().lower().replace(",", "")
-    mult = 1
-    if s.endswith("k"):
-        mult = 1000
-        s = s[:-1]
-    elif s.endswith("m"):
-        mult = 1000000
-        s = s[:-1]
-    try:
-        return int(round(float(s) * mult))
-    except ValueError:
-        return None
-
-
-def _extract_copilot_usage_metrics(stderr: str) -> dict[str, Any]:
-    metrics: dict[str, Any] = {}
-    matches = list(_COPILOT_MODEL_BREAKDOWN_RE.finditer(stderr))
-    if not matches:
-        return metrics
-
-    total_in = 0
-    total_out = 0
-    total_cached = 0
-    model_names: list[str] = []
-    for match in matches:
-        model = match.group("model")
-        input_tokens = _parse_human_token_count(match.group("input"))
-        output_tokens = _parse_human_token_count(match.group("output"))
-        cached_tokens = _parse_human_token_count(match.group("cached"))
-        if input_tokens is None or output_tokens is None or cached_tokens is None:
-            continue
-        model_names.append(model)
-        total_in += input_tokens
-        total_out += output_tokens
-        total_cached += cached_tokens
-
-    if not model_names:
-        return {}
-
-    metrics["agent_input_tokens"] = total_in
-    metrics["agent_output_tokens"] = total_out
-    metrics["agent_cached_input_tokens"] = total_cached
-    if len(model_names) == 1:
-        metrics["agent_usage_model"] = model_names[0]
-    else:
-        metrics["agent_usage_model"] = ",".join(model_names)
-    return metrics
-
-
-_OPENCODE_STATS_VALUE_RE = re.compile(
-    r"^[^0-9$]*\$?([0-9][0-9,]*(?:\.[0-9]+)?(?:[kKmM])?)"
-)
-
-
-def _extract_boxed_stat_value(text: str, label: str) -> str | None:
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        line = line.strip("│").strip()
-        if not line.startswith(label):
-            continue
-        rest = line[len(label) :].strip()
-        match = _OPENCODE_STATS_VALUE_RE.match(rest)
-        if match:
-            return match.group(1)
-    return None
-
-
-def _extract_opencode_stats_metrics(stdout: str) -> dict[str, Any]:
-    metrics: dict[str, Any] = {}
-    input_raw = _extract_boxed_stat_value(stdout, "Input")
-    output_raw = _extract_boxed_stat_value(stdout, "Output")
-    cache_read_raw = _extract_boxed_stat_value(stdout, "Cache Read")
-    cache_write_raw = _extract_boxed_stat_value(stdout, "Cache Write")
-
-    if input_raw is not None:
-        parsed = _parse_human_token_count(input_raw)
-        if parsed is not None:
-            metrics["agent_input_tokens"] = parsed
-    if output_raw is not None:
-        parsed = _parse_human_token_count(output_raw)
-        if parsed is not None:
-            metrics["agent_output_tokens"] = parsed
-    if cache_read_raw is not None:
-        parsed = _parse_human_token_count(cache_read_raw)
-        if parsed is not None:
-            metrics["agent_cached_input_tokens"] = parsed
-    if cache_write_raw is not None:
-        parsed = _parse_human_token_count(cache_write_raw)
-        if parsed is not None:
-            metrics["agent_cache_creation_input_tokens"] = parsed
-    return metrics
+_timed_bash_script = _execution_helpers._timed_bash_script
+_extract_inner_sec = _execution_helpers._extract_inner_sec
 
 
 def _opencode_state_dir(run_dir: Path) -> Path:
     return run_dir / ".opencode-data"
 
 
-def _collect_opencode_usage_metrics(*, state_dir: Path) -> dict[str, Any]:
-    env = dict(os.environ)
-    env["XDG_DATA_HOME"] = str(state_dir)
-    cmd = ["opencode", "stats", "--models", "1"]
-    try:
-        proc = subprocess.run(
-            cmd,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            env=env,
-        )
-    except FileNotFoundError:
-        return {}
-    if proc.returncode != 0:
-        return {}
-    return _extract_opencode_stats_metrics(proc.stdout)
-
-
-def _extract_agent_usage_metrics(
-    agent_name: str, stdout: str, stderr: str = ""
-) -> dict[str, Any]:
-    if agent_name == "copilot":
-        return _extract_copilot_usage_metrics(stderr)
-
-    if agent_name not in {"opencode", "claude", "codex"}:
-        return {}
-
-    objects = _json_line_objects(stdout)
-    if not objects:
-        return {}
-
-    usage_obj: dict[str, Any] | None = None
-    extra_metrics: dict[str, Any] = {}
-
-    if agent_name in {"opencode", "claude"}:
-        for obj in objects:
-            if obj.get("type") != "result":
-                continue
-            usage = obj.get("usage")
-            if isinstance(usage, dict):
-                usage_obj = usage
-        if usage_obj is None:
-            for obj in objects:
-                usage = obj.get("usage")
-                if isinstance(usage, dict):
-                    usage_obj = usage
-    elif agent_name == "codex":
-        for obj in objects:
-            if obj.get("type") != "turn.completed":
-                continue
-            usage = obj.get("usage")
-            if isinstance(usage, dict):
-                usage_obj = usage
-
-    if usage_obj is None:
-        return {}
-
-    metrics = _usage_metrics_from_usage_dict(usage_obj)
-    metrics.update(extra_metrics)
-    return metrics
-
-
-def _merge_metrics(result: dict[str, Any], metrics: dict[str, Any]) -> None:
-    for key, value in metrics.items():
-        _set_metric_value(result, key, value)
-
-
-def _merge_metric_dicts(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    merged.update(extra)
-    return merged
-
-
-def _fill_missing_metric_dicts(
-    base: dict[str, Any], fallback: dict[str, Any]
-) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in fallback.items():
-        merged.setdefault(key, value)
-    return merged
-
-
-def _collect_postrun_agent_usage_metrics(
-    *,
-    agent_name: str,
-    run_dir: Path,
-    mode: str,
-    workdir: Path,
-) -> dict[str, Any]:
-    if agent_name != "opencode":
-        return {}
-    return _collect_opencode_usage_metrics(state_dir=_opencode_state_dir(run_dir))
-
-
-def _write_failure_result(
-    run_dir: Path,
-    *,
-    error: str,
-    message: str,
-    run_id: str,
-    started_at: str,
-    task_ref: str,
-    agent_name: str | None = None,
-    model: str | None = None,
-    agent_exit_code: int | str | None = None,
-    eval_exit_code: int | str | None = None,
-    metrics: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "status": "failed",
-        "score": 0.0,
-        "error": error,
-        "message": message,
-        "run_id": run_id,
-        "started_at": started_at,
-        "task": task_ref,
-    }
-    if agent_name:
-        result["agent"] = agent_name
-    if model:
-        result["model"] = model
-    if agent_exit_code is not None:
-        result["agent_exit_code"] = agent_exit_code
-    if eval_exit_code is not None:
-        result["eval_exit_code"] = eval_exit_code
-    if metrics:
-        result["metrics"] = metrics
-    (run_dir / "result.json").write_text(
-        json.dumps(result, indent=2) + "\n", encoding="utf-8"
-    )
-    return result
-
-
-def _run_started_at() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _annotate_result_metadata(
-    result: dict[str, Any],
-    *,
-    run_id: str,
-    started_at: str,
-    task_ref: str,
-    agent_name: str | None = None,
-    model: str | None = None,
-    agent_exit_code: int | str | None = None,
-    eval_exit_code: int | str | None = None,
-) -> None:
-    result["run_id"] = run_id
-    result["started_at"] = started_at
-    result["task"] = task_ref
-    if agent_name:
-        result["agent"] = agent_name
-    if model:
-        result["model"] = model
-    if agent_exit_code is not None:
-        result["agent_exit_code"] = agent_exit_code
-    if eval_exit_code is not None:
-        result["eval_exit_code"] = eval_exit_code
-
-
-def _redacted_cmd(cmd: list[str]) -> list[str]:
-    out: list[str] = []
-    redact_next_env = False
-    for tok in cmd:
-        if redact_next_env:
-            if "=" in tok:
-                k, _v = tok.split("=", 1)
-                out.append(f"{k}=<redacted>")
-            else:
-                out.append(tok)
-            redact_next_env = False
-            continue
-
-        out.append(tok)
-        if tok == "-e":
-            redact_next_env = True
-    return out
-
-
-def _cmd_str(cmd: list[str]) -> str:
-    # Render a shell-ish command line for logs.
-    return shlex.join(_redacted_cmd(cmd))
+_cmd_str = _execution_helpers._cmd_str
 
 
 def _cleanup_docker_container(
     *, container_name: str, phase: str, verbose: bool
 ) -> None:
-    kill_cmd = ["docker", "kill", container_name]
-    rm_cmd = ["docker", "rm", "-f", container_name]
-    _vprint(verbose, f"[{phase}] timeout cleanup: {_cmd_str(kill_cmd)}")
-    subprocess.run(
-        kill_cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        timeout=10,
-    )
-    _vprint(verbose, f"[{phase}] timeout cleanup: {_cmd_str(rm_cmd)}")
-    subprocess.run(
-        rm_cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        timeout=10,
+    _execution_helpers._cleanup_docker_container(
+        container_name=container_name,
+        phase=phase,
+        verbose=verbose,
+        subprocess_mod=subprocess,
     )
 
 
-def _expand_path(s: str) -> str:
-    return os.path.expandvars(os.path.expanduser(s))
+_expand_path = _config_helpers._expand_path
 
 
 def _resolve_input_toml_path(path: Path) -> Path:
-    p = Path(_expand_path(str(path)))
-    if not p.is_absolute():
-        p = (REPO_ROOT / p).resolve()
-    return p
+    return _config_helpers._resolve_input_toml_path(path, repo_root=REPO_ROOT)
 
 
 def _load_toml(path: Path, *, kind: str) -> dict[str, Any]:
-    p = _resolve_input_toml_path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"{kind} not found: {p}")
-
-    if p.suffix.lower() != ".toml":
-        raise ValueError(f"{kind} must be TOML: {p}")
-
-    if _toml_lib is None:
-        raise RuntimeError(
-            "TOML parser unavailable (need Python 3.11+ or install tomli)"
-        )
-
-    data = _toml_lib.loads(p.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"{kind} root must be a table")
-    return data
+    return _config_helpers._load_toml(path, kind=kind, repo_root=REPO_ROOT)
 
 
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    out = dict(base)
-    for k, v in override.items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
-            out[k] = _deep_merge(out[k], v)
-        else:
-            out[k] = v
-    return out
+_deep_merge = _config_helpers._deep_merge
 
 
 def _load_agent_config(path: Path) -> dict[str, Any]:
-    override = _load_toml(path, kind="agent config")
-    if int(override.get("version", 0)) != 1:
-        raise ValueError(f"Unsupported agent config version: {override.get('version')}")
-
-    name = str(override.get("name", "")).strip()
-    if not name:
-        raise ValueError("agent config missing required 'name'")
-
-    defaults = _load_toml(AGENTS_DEFAULT_PATH, kind="agents default config")
-    if int(defaults.get("version", 0)) != 1:
-        raise ValueError(
-            f"Unsupported agents default config version: {defaults.get('version')}"
-        )
-    agents = defaults.get("agents")
-    if not isinstance(agents, dict):
-        raise ValueError("agents default config missing [agents] table")
-
-    base = agents.get(name)
-    if not isinstance(base, dict):
-        raise ValueError(f"Agent {name!r} not found in agents_default.toml")
-
-    filtered = {k: v for k, v in override.items() if k not in {"version", "name"}}
-    merged = _deep_merge(base, filtered)
-    merged["name"] = name
-    return merged
+    return _config_helpers._load_agent_config(
+        path,
+        defaults_path=AGENTS_DEFAULT_PATH,
+        repo_root=REPO_ROOT,
+    )
 
 
-def _resolve_host_executable(spec: str) -> Path:
-    s = _expand_path(spec)
-    if "/" in s or s.startswith("."):
-        p = Path(s)
-        if p.exists():
-            return p.resolve()
-        raise FileNotFoundError(f"Executable not found: {p}")
-
-    found = shutil.which(s)
-    if not found:
-        raise FileNotFoundError(f"Executable not found on PATH: {s}")
-    return Path(found).resolve()
-
-
-@dataclass(frozen=True)
-class Task:
-    suite: str
-    task_id: str
-    path: Path
-    spec_path: Path
-    task_toml_path: Path
-    workspace_tpl: Path
-    eval_dir: Path
-    meta: dict
+_resolve_host_executable = _config_helpers._resolve_host_executable
 
 
 def _task_roots(*, include_test_tasks: bool) -> list[Path]:
-    roots = [BENCH_ROOT]
-    if include_test_tasks:
-        roots.append(TEST_TASK_ROOT)
-    return roots
+    return _task_loading_helpers._task_roots(
+        include_test_tasks=include_test_tasks,
+        bench_root=BENCH_ROOT,
+        test_task_root=TEST_TASK_ROOT,
+    )
 
 
 def _task_path(root: Path, suite: str, task_id: str) -> Path:
-    return root / suite / task_id
-
-
-def _task_root_label(root: Path) -> str:
-    try:
-        return root.relative_to(REPO_ROOT).as_posix() + "/"
-    except ValueError:
-        return str(root)
-
-
-def _task_root_map() -> dict[str, Path]:
-    return {
-        "bench": BENCH_ROOT,
-        "benchmark": BENCH_ROOT,
-        "test": TEST_TASK_ROOT,
-        "test-task": TEST_TASK_ROOT,
-        "test-tasks": TEST_TASK_ROOT,
-    }
+    return _task_loading_helpers._task_path(root, suite, task_id)
 
 
 def _parse_task_ref(task_ref: str) -> tuple[Path | None, str, str]:
-    raw = task_ref.strip()
-    if not raw:
-        raise ValueError("Task must be in the form <suite>/<task_id>")
-
-    root: Path | None = None
-    body = raw
-    if ":" in raw:
-        maybe_root, maybe_body = raw.split(":", 1)
-        mapped = _task_root_map().get(maybe_root.strip().lower())
-        if mapped is not None:
-            root = mapped
-            body = maybe_body.strip()
-
-    if "/" not in body:
-        raise ValueError("Task must be in the form <suite>/<task_id>")
-    suite, task_id = body.split("/", 1)
-    suite = suite.strip()
-    task_id = task_id.strip()
-    if not suite or not task_id:
-        raise ValueError("Task must be in the form <suite>/<task_id>")
-    return root, suite, task_id
+    return _task_loading_helpers._parse_task_ref(
+        task_ref,
+        bench_root=BENCH_ROOT,
+        test_task_root=TEST_TASK_ROOT,
+        repo_root=REPO_ROOT,
+    )
 
 
 def _task_meta_bool(task: Task, key: str) -> bool:
-    if key not in task.meta:
-        return False
-    val = task.meta.get(key)
-    if isinstance(val, bool):
-        return val
-    raise ValueError(f"task.toml {key} must be a boolean")
+    return _task_loading_helpers._task_meta_bool(task, key)
 
 
 def _suite_shared_workspace_dir(task: Task) -> Path:
-    return task.path.parent / "shared" / "workspace"
+    return _task_loading_helpers._suite_shared_workspace_dir(task)
 
 
 def _suite_shared_eval_dir(task: Task) -> Path:
-    return task.path.parent / "shared" / "eval"
+    return _task_loading_helpers._suite_shared_eval_dir(task)
 
 
 def _shared_eval_mount_dir(task: Task) -> Path | None:
@@ -929,73 +237,22 @@ def _coerce_text(v: object) -> str:
 
 
 def _load_task(suite: str, task_id: str, *, root: Path | None = None) -> Task:
-    task_path: Path | None = None
-    searched: list[str] = []
-    roots = [root] if root is not None else _task_roots(include_test_tasks=True)
-    matches: list[Path] = []
-    for candidate_root in roots:
-        searched.append(_task_root_label(candidate_root))
-        candidate = _task_path(candidate_root, suite, task_id)
-        if candidate.exists():
-            matches.append(candidate)
-
-    if len(matches) > 1:
-        locations = ", ".join(str(p) for p in matches)
-        raise FileNotFoundError(
-            f"Task reference is ambiguous: {suite}/{task_id} (matches: {locations}). "
-            "Use bench:<suite>/<task_id> or test:<suite>/<task_id>."
-        )
-
-    if matches:
-        task_path = matches[0]
-
-    if task_path is None:
-        roots = ", ".join(searched)
-        raise FileNotFoundError(
-            f"Task not found: {suite}/{task_id} (searched: {roots})"
-        )
-
-    spec_path = task_path / "spec.md"
-    task_toml_path = task_path / "task.toml"
-    workspace_tpl = task_path / "workspace"
-    eval_dir = task_path / "eval"
-
-    missing = [
-        p
-        for p in [spec_path, task_toml_path, workspace_tpl, eval_dir]
-        if not p.exists()
-    ]
-    if missing:
-        msg = "Task is missing required paths:\n" + "\n".join(f"- {p}" for p in missing)
-        raise FileNotFoundError(msg)
-
-    if _toml_lib is None:
-        raise RuntimeError(
-            "TOML parser unavailable (need Python 3.11+ or install tomli)"
-        )
-    meta: dict[str, Any] = _toml_lib.loads(task_toml_path.read_text(encoding="utf-8"))
-    return Task(
-        suite=suite,
-        task_id=task_id,
-        path=task_path,
-        spec_path=spec_path,
-        task_toml_path=task_toml_path,
-        workspace_tpl=workspace_tpl,
-        eval_dir=eval_dir,
-        meta=meta,
+    return _task_loading_helpers._load_task(
+        suite,
+        task_id,
+        root=root,
+        bench_root=BENCH_ROOT,
+        test_task_root=TEST_TASK_ROOT,
+        repo_root=REPO_ROOT,
     )
 
 
 def _iter_tasks(*, include_test_tasks: bool = False):
-    for root in _task_roots(include_test_tasks=include_test_tasks):
-        if not root.exists():
-            continue
-        for suite_dir in sorted([p for p in root.iterdir() if p.is_dir()]):
-            for task_dir in sorted([p for p in suite_dir.iterdir() if p.is_dir()]):
-                if (task_dir / "spec.md").exists() and (
-                    task_dir / "task.toml"
-                ).exists():
-                    yield (suite_dir.name, task_dir.name)
+    yield from _task_loading_helpers._iter_tasks(
+        include_test_tasks=include_test_tasks,
+        bench_root=BENCH_ROOT,
+        test_task_root=TEST_TASK_ROOT,
+    )
 
 
 def cmd_list(_args: argparse.Namespace) -> int:
@@ -1005,118 +262,7 @@ def cmd_list(_args: argparse.Namespace) -> int:
 
 
 def _check_task(task: Task) -> tuple[list[str], list[str]]:
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    if not task.spec_path.is_file():
-        errors.append("spec.md must be a file")
-    if not task.task_toml_path.is_file():
-        errors.append("task.toml must be a file")
-    if not task.workspace_tpl.is_dir():
-        errors.append("workspace/ must be a directory")
-    if not task.eval_dir.is_dir():
-        errors.append("eval/ must be a directory")
-
-    meta = task.meta
-    required_keys = ["id", "suite", "language", "time_limit_sec", "eval_cmd"]
-    for key in required_keys:
-        if key not in meta:
-            errors.append(f"task.toml missing required key: {key}")
-
-    if str(meta.get("id", "")).strip() != task.task_id:
-        errors.append(
-            f"task.toml id must match directory name: expected {task.task_id!r}"
-        )
-
-    if str(meta.get("suite", "")).strip() != task.suite:
-        errors.append(
-            f"task.toml suite must match directory name: expected {task.suite!r}"
-        )
-
-    language = str(meta.get("language", "")).strip()
-    if language and language not in {"python", "cpp", "fortran"}:
-        errors.append("task.toml language must be one of: python, cpp, fortran")
-
-    try:
-        time_limit = int(meta.get("time_limit_sec", 0))
-        if time_limit <= 0:
-            errors.append("task.toml time_limit_sec must be a positive integer")
-    except Exception:
-        errors.append("task.toml time_limit_sec must be an integer")
-
-    eval_cmd = str(meta.get("eval_cmd", "")).strip()
-    if not eval_cmd:
-        errors.append("task.toml eval_cmd must be a non-empty string")
-
-    prompt_file = str(meta.get("prompt_file", "")).strip()
-    if prompt_file:
-        p = task.path / prompt_file
-        if not p.exists() or not p.is_file():
-            errors.append(f"prompt_file not found: {p}")
-
-    use_shared_workspace = meta.get("use_shared_workspace", False)
-    if not isinstance(use_shared_workspace, bool):
-        errors.append("task.toml use_shared_workspace must be a boolean")
-        use_shared_workspace = False
-
-    use_shared_eval = meta.get("use_shared_eval", False)
-    if not isinstance(use_shared_eval, bool):
-        errors.append("task.toml use_shared_eval must be a boolean")
-        use_shared_eval = False
-
-    if use_shared_workspace:
-        shared_workspace = _suite_shared_workspace_dir(task)
-        if not shared_workspace.exists() or not shared_workspace.is_dir():
-            errors.append(
-                "task.toml use_shared_workspace=true but suite shared workspace "
-                f"directory is missing: {shared_workspace}"
-            )
-
-    if use_shared_eval:
-        shared_eval = _suite_shared_eval_dir(task)
-        if not shared_eval.exists() or not shared_eval.is_dir():
-            errors.append(
-                "task.toml use_shared_eval=true but suite shared eval "
-                f"directory is missing: {shared_eval}"
-            )
-
-    if task.spec_path.is_file():
-        spec_text = task.spec_path.read_text(encoding="utf-8").strip()
-        if not spec_text:
-            errors.append("spec.md must not be empty")
-        elif "#" not in spec_text.splitlines()[0]:
-            warnings.append("spec.md first line is not a Markdown heading")
-
-    if task.workspace_tpl.is_dir():
-        if not any(task.workspace_tpl.iterdir()):
-            warnings.append("workspace/ is empty")
-
-    public_tests = task.workspace_tpl / "tests"
-    if task.workspace_tpl.is_dir() and (
-        not public_tests.exists() or not public_tests.is_dir()
-    ):
-        warnings.append("workspace/tests/ not found (no public tests)")
-
-    run_sh = task.eval_dir / "run.sh"
-    if eval_cmd == "/eval/run.sh" and not run_sh.exists():
-        errors.append("eval_cmd points to /eval/run.sh but eval/run.sh is missing")
-    if run_sh.exists():
-        if not run_sh.is_file():
-            errors.append("eval/run.sh exists but is not a file")
-        elif not os.access(run_sh, os.X_OK):
-            errors.append("eval/run.sh is not executable")
-
-        run_text = run_sh.read_text(encoding="utf-8", errors="replace")
-        if not run_text.startswith("#!/usr/bin/env bash"):
-            warnings.append("eval/run.sh should start with '#!/usr/bin/env bash'")
-        if "result.json" not in run_text:
-            warnings.append("eval/run.sh does not appear to write result.json")
-        if "/eval_shared" in run_text and not use_shared_eval:
-            warnings.append(
-                "eval/run.sh references /eval_shared but use_shared_eval is false"
-            )
-
-    return errors, warnings
+    return _task_loading_helpers._check_task(task)
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -1242,98 +388,32 @@ def _run_docker_eval(
     verbose: bool = False,
     cmd_log_path: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess, float | None]:
-    uid = os.getuid() if hasattr(os, "getuid") else 1000
-    gid = os.getgid() if hasattr(os, "getgid") else 1000
-
-    container_name = f"simbench-eval-{secrets.token_hex(6)}"
-    docker_cmd = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        container_name,
-        "-u",
-        f"{uid}:{gid}",
-        "-e",
-        "HOME=/tmp",
-        "-e",
-        "OMP_NUM_THREADS=1",
-        "-e",
-        "OPENBLAS_NUM_THREADS=1",
-        "-e",
-        "MKL_NUM_THREADS=1",
-        "-e",
-        "VECLIB_MAXIMUM_THREADS=1",
-        "-e",
-        "NUMEXPR_NUM_THREADS=1",
-        "-v",
-        f"{str(workdir)}:/work:rw",
-        "-v",
-        f"{str(eval_dir)}:/eval:ro",
-        "-w",
-        "/work",
-    ]
-    if shared_eval_dir is not None:
-        docker_cmd += ["-v", f"{str(shared_eval_dir)}:/eval_shared:ro"]
-    if extra_env:
-        for k, v in extra_env.items():
-            docker_cmd += ["-e", f"{k}={v}"]
-
-    docker_cmd += [image, "bash", "-lc", _timed_bash_script(eval_cmd)]
-
-    if cmd_log_path is not None:
-        cmd_log_path.write_text(_cmd_str(docker_cmd) + "\n", encoding="utf-8")
-    _vsection(verbose, "EVAL PHASE")
-    _vprint(verbose, "[eval] command:")
-    _vprint(verbose, _cmd_str(docker_cmd))
-    _vprint(verbose, "[eval] output:")
-
-    proc = _run_capture_stream(
-        docker_cmd,
+    return _docker_runner_helpers._run_docker_eval(
+        image=image,
+        workdir=workdir,
+        eval_dir=eval_dir,
+        eval_cmd=eval_cmd,
+        shared_eval_dir=shared_eval_dir,
         timeout_sec=timeout_sec,
+        extra_env=extra_env,
         verbose=verbose,
-        phase="eval",
-        timeout_cleanup=lambda: _cleanup_docker_container(
-            container_name=container_name,
-            phase="eval",
-            verbose=verbose,
-        ),
+        cmd_log_path=cmd_log_path,
+        run_capture_stream=_run_capture_stream,
+        cleanup_docker_container=_cleanup_docker_container,
+        cmd_str=_cmd_str,
+        timed_bash_script=_timed_bash_script,
+        extract_inner_sec=_extract_inner_sec,
+        subprocess_mod=subprocess,
     )
-    return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 
 
 def _run_docker_shell(*, image: str, workdir: Path, cmd: list[str]) -> int:
-    uid = os.getuid() if hasattr(os, "getuid") else 1000
-    gid = os.getgid() if hasattr(os, "getgid") else 1000
-
-    docker_cmd = [
-        "docker",
-        "run",
-        "--rm",
-        "-u",
-        f"{uid}:{gid}",
-        "-e",
-        "HOME=/tmp",
-        "-e",
-        "OMP_NUM_THREADS=1",
-        "-e",
-        "OPENBLAS_NUM_THREADS=1",
-        "-e",
-        "MKL_NUM_THREADS=1",
-        "-e",
-        "VECLIB_MAXIMUM_THREADS=1",
-        "-e",
-        "NUMEXPR_NUM_THREADS=1",
-        "-v",
-        f"{str(workdir)}:/work:rw",
-        "-w",
-        "/work",
-    ]
-    if cmd == ["bash"]:
-        docker_cmd += ["-it"]
-
-    docker_cmd += [image] + cmd
-    return subprocess.call(docker_cmd)
+    return _docker_runner_helpers._run_docker_shell(
+        image=image,
+        workdir=workdir,
+        cmd=cmd,
+        subprocess_mod=subprocess,
+    )
 
 
 def _run_agent_in_docker(
@@ -1349,147 +429,34 @@ def _run_agent_in_docker(
     verbose: bool = False,
     cmd_log_path: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess, float | None]:
-    uid = os.getuid() if hasattr(os, "getuid") else 1000
-    gid = os.getgid() if hasattr(os, "getgid") else 1000
-
-    container_name = f"simbench-agent-{agent_name}-{secrets.token_hex(6)}"
-    docker_cmd: list[str] = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        container_name,
-        "-u",
-        f"{uid}:{gid}",
-        "-e",
-        "HOME=/tmp",
-        "-e",
-        "OMP_NUM_THREADS=1",
-        "-e",
-        "OPENBLAS_NUM_THREADS=1",
-        "-e",
-        "MKL_NUM_THREADS=1",
-        "-e",
-        "VECLIB_MAXIMUM_THREADS=1",
-        "-e",
-        "NUMEXPR_NUM_THREADS=1",
-        "-e",
-        f"BENCH_AGENT={agent_name}",
-        "-e",
-        f"BENCH_MODEL={model}",
-        "-e",
-        "BENCH_WORKDIR=/work",
-        "-e",
-        "BENCH_RUN_DIR=/run",
-        "-e",
-        "BENCH_PROMPT_FILE=/run/prompt.txt",
-        "-e",
-        "BENCH_SPEC_FILE=/run/spec.md",
-        "-v",
-        f"{str(workdir)}:/work:rw",
-        "-v",
-        f"{str(run_dir)}:/run:ro",
-        "-w",
-        "/work",
-    ]
-    if agent_name == "opencode":
-        opencode_state_dir = _opencode_state_dir(run_dir)
-        opencode_state_dir.mkdir(parents=True, exist_ok=True)
-        docker_cmd += [
-            "-e",
-            "XDG_DATA_HOME=/opencode-data",
-            "-v",
-            f"{str(opencode_state_dir)}:/opencode-data:rw",
-        ]
-    model_options = _normalize_model_options(agent_name, agent_cfg)
-    for k, v in _model_options_env(model_options).items():
-        docker_cmd += ["-e", f"{k}={v}"]
-
-    bins = agent_cfg.get("bins", [])
-    if not isinstance(bins, list):
-        raise ValueError(f"Agent {agent_name!r} bins must be a list")
-    for b in bins:
-        if not isinstance(b, dict):
-            raise ValueError(f"Agent {agent_name!r} has invalid bin entry")
-        host = str(b.get("host", "")).strip()
-        container = str(b.get("container", "")).strip()
-        if not host or not container:
-            raise ValueError(f"Agent {agent_name!r} bin entries require host+container")
-        host_path = _resolve_host_executable(host)
-        docker_cmd += ["-v", f"{str(host_path)}:{container}:ro"]
-
-    mounts = agent_cfg.get("mounts", [])
-    if mounts:
-        if not isinstance(mounts, list):
-            raise ValueError(f"Agent {agent_name!r} mounts must be a list")
-        for m in mounts:
-            if not isinstance(m, dict):
-                raise ValueError(f"Agent {agent_name!r} has invalid mount entry")
-            host = str(m.get("host", "")).strip()
-            container = str(m.get("container", "")).strip()
-            mode = str(m.get("mode", "ro")).strip()
-            optional = bool(m.get("optional", False))
-            if not host or not container:
-                raise ValueError(
-                    f"Agent {agent_name!r} mount entries require host+container"
-                )
-            if mode not in ("ro", "rw"):
-                raise ValueError(f"Agent {agent_name!r} mount mode must be ro|rw")
-
-            host_path = Path(_expand_path(host))
-            if not host_path.exists():
-                if optional:
-                    continue
-                raise FileNotFoundError(f"Mount source not found: {host_path}")
-            docker_cmd += ["-v", f"{str(host_path.resolve())}:{container}:{mode}"]
-
-    env_kv = agent_cfg.get("env", {})
-    if env_kv:
-        if not isinstance(env_kv, dict):
-            raise ValueError(f"Agent {agent_name!r} env must be an object")
-        for k, v in env_kv.items():
-            docker_cmd += ["-e", f"{k}={v}"]
-
-    if extra_env:
-        for k, v in extra_env.items():
-            docker_cmd += ["-e", f"{k}={v}"]
-
-    pre = agent_cfg.get("pre", [])
-    cmd = str(agent_cfg.get("cmd", "")).strip()
-    if not cmd:
-        raise ValueError(f"Agent {agent_name!r} missing 'cmd'")
-    if pre and not isinstance(pre, list):
-        raise ValueError(f"Agent {agent_name!r} pre must be a list")
-    cmd = _inject_model_options_args(cmd, model_options)
-
-    inner_parts: list[str] = []
-    inner_parts.append('test -f "$BENCH_PROMPT_FILE"')
-    inner_parts.append('test -f "$BENCH_SPEC_FILE"')
-    for part in pre:
-        inner_parts.append(str(part))
-    inner_parts.append(_timed_bash_script(cmd))
-    docker_cmd += [image, "bash", "-lc", " && ".join(inner_parts)]
-
-    if cmd_log_path is not None:
-        cmd_log_path.write_text(_cmd_str(docker_cmd) + "\n", encoding="utf-8")
-    _vsection(verbose, "AGENT PHASE")
-    _vprint(verbose, f"[agent:{agent_name}] command:")
-    _vprint(verbose, _cmd_str(docker_cmd))
-    _vprint(verbose, f"[agent:{agent_name}] output:")
-
-    proc = _run_capture_stream(
-        docker_cmd,
+    # Keep bench.py as the stable compatibility seam for agent execution.
+    return _execution_agent._run_agent_in_docker(
+        image=image,
+        workdir=workdir,
+        run_dir=run_dir,
+        agent_name=agent_name,
+        agent_cfg=agent_cfg,
+        model=model,
         timeout_sec=timeout_sec,
+        extra_env=extra_env,
         verbose=verbose,
-        phase=f"agent:{agent_name}",
-        pretty_timeline=True,
-        timeout_cleanup=lambda: _cleanup_docker_container(
-            container_name=container_name,
-            phase=f"agent:{agent_name}",
-            verbose=verbose,
-        ),
+        cmd_log_path=cmd_log_path,
+        run_capture_stream=_run_capture_stream,
+        cleanup_docker_container=_cleanup_docker_container,
+        cmd_str=_cmd_str,
+        timed_bash_script=_timed_bash_script,
+        extract_inner_sec=_extract_inner_sec,
+        normalize_model_options=_normalize_model_options,
+        model_options_env=_model_options_env,
+        inject_model_options_args=_inject_model_options_args,
+        resolve_host_executable=_resolve_host_executable,
+        expand_path=_expand_path,
+        vprint=_vprint,
+        vsection=_vsection,
+        subprocess_mod=subprocess,
+        os_mod=os,
+        secrets_mod=secrets,
     )
-    return proc, _extract_inner_sec(proc.stdout, proc.stderr)
 
 
 def _run_agent_on_host(
@@ -1504,81 +471,28 @@ def _run_agent_on_host(
     verbose: bool = False,
     cmd_log_path: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess, float | None]:
-    # Validate that declared executables exist on PATH.
-    bins = agent_cfg.get("bins", [])
-    if not isinstance(bins, list) or not bins:
-        raise ValueError(f"Agent {agent_name!r} missing 'bins' list")
-    for b in bins:
-        if not isinstance(b, dict):
-            raise ValueError(f"Agent {agent_name!r} has invalid bin entry")
-        host = str(b.get("host", "")).strip()
-        if not host:
-            raise ValueError(f"Agent {agent_name!r} bin entries require host")
-        _resolve_host_executable(host)
-
-    env = dict(os.environ)
-    env.update(
-        {
-            "BENCH_AGENT": agent_name,
-            "BENCH_MODEL": model,
-            "BENCH_WORKDIR": str(workdir),
-            "BENCH_RUN_DIR": str(run_dir),
-            "BENCH_PROMPT_FILE": str(run_dir / "prompt.txt"),
-            "BENCH_SPEC_FILE": str(run_dir / "spec.md"),
-        }
-    )
-    if agent_name == "opencode":
-        opencode_state_dir = _opencode_state_dir(run_dir)
-        opencode_state_dir.mkdir(parents=True, exist_ok=True)
-        env["XDG_DATA_HOME"] = str(opencode_state_dir)
-    model_options = _normalize_model_options(agent_name, agent_cfg)
-    env.update(_model_options_env(model_options))
-
-    env_kv = agent_cfg.get("env", {})
-    if env_kv:
-        if not isinstance(env_kv, dict):
-            raise ValueError(f"Agent {agent_name!r} env must be an object")
-        for k, v in env_kv.items():
-            env[str(k)] = str(v)
-
-    if extra_env:
-        env.update(extra_env)
-
-    pre = agent_cfg.get("pre", [])
-    cmd = str(agent_cfg.get("cmd", "")).strip()
-    if not cmd:
-        raise ValueError(f"Agent {agent_name!r} missing 'cmd'")
-    if pre and not isinstance(pre, list):
-        raise ValueError(f"Agent {agent_name!r} pre must be a list")
-    cmd = _inject_model_options_args(cmd, model_options)
-
-    parts: list[str] = []
-    parts.append('test -f "$BENCH_PROMPT_FILE"')
-    parts.append('test -f "$BENCH_SPEC_FILE"')
-    for part in pre:
-        parts.append(str(part))
-    parts.append(cmd)
-
-    # Run under bash for consistent quoting/expansion.
-    cmdline = ["bash", "-lc", " && ".join(parts)]
-    if cmd_log_path is not None:
-        cmd_log_path.write_text(_cmd_str(cmdline) + "\n", encoding="utf-8")
-    _vsection(verbose, "AGENT PHASE")
-    _vprint(verbose, f"[agent:{agent_name}:host] command:")
-    _vprint(verbose, _cmd_str(cmdline))
-    _vprint(verbose, f"[agent:{agent_name}:host] output:")
-
-    t0 = time.perf_counter()
-    proc = _run_capture_stream(
-        cmdline,
+    # Keep bench.py as the stable compatibility seam for agent execution.
+    return _execution_agent._run_agent_on_host(
+        workdir=workdir,
+        run_dir=run_dir,
+        agent_name=agent_name,
+        agent_cfg=agent_cfg,
+        model=model,
         timeout_sec=timeout_sec,
+        extra_env=extra_env,
         verbose=verbose,
-        phase=f"agent:{agent_name}",
-        cwd=workdir,
-        env=env,
-        pretty_timeline=True,
+        cmd_log_path=cmd_log_path,
+        run_capture_stream=_run_capture_stream,
+        normalize_model_options=_normalize_model_options,
+        model_options_env=_model_options_env,
+        inject_model_options_args=_inject_model_options_args,
+        resolve_host_executable=_resolve_host_executable,
+        vprint=_vprint,
+        vsection=_vsection,
+        subprocess_mod=subprocess,
+        os_mod=os,
+        time_mod=time,
     )
-    return proc, round(time.perf_counter() - t0, 6)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
