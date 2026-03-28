@@ -1,0 +1,45 @@
+{
+  "abs_l1": {
+    "by": 1e-12,
+    "p": 1e-12,
+    "rho": 1e-12,
+    "u": 1e-12
+  },
+  "abs_linf": {
+    "by": 1e-13,
+    "p": 1e-13,
+    "rho": 1e-13,
+    "u": 1e-13
+  },
+  "bx": 0.75,
+  "discontinuity_x": 0.5,
+  "domain": [
+    0.0,
+    1.0
+  ],
+  "dt": 0.0005,
+  "gamma": 2.0,
+  "interior_cell_window": {
+    "exclude_edge_adjacents_per_side": 2
+  },
+  "name": "brio_wu",
+  "nx": 400,
+  "reference_csv": "brio_wu_reference.csv",
+  "schema": [
+    "x",
+    "rho",
+    "u",
+    "v",
+    "w",
+    "p",
+    "by",
+    "bz"
+  ],
+  "scored_variables": [
+    "rho",
+    "u",
+    "p",
+    "by"
+  ],
+  "t_final": 0.1
+}

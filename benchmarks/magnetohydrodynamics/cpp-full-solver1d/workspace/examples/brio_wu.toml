@@ -1,0 +1,28 @@
+# Canonical Brio-Wu benchmark input for cpp-full-solver1d.
+
+nx = 400
+x_left = 0.0
+x_right = 1.0
+discontinuity_x = 0.5
+gamma = 2.0
+bx = 0.75
+dt = 5.0e-4
+t_final = 0.1
+
+[left]
+rho = 1.0
+u = 0.0
+v = 0.0
+w = 0.0
+p = 1.0
+by = 1.0
+bz = 0.0
+
+[right]
+rho = 0.125
+u = 0.0
+v = 0.0
+w = 0.0
+p = 0.1
+by = -1.0
+bz = 0.0
