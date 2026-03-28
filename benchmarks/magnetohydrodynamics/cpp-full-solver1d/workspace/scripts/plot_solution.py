@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Plot a Brio-Wu solver CSV for quick inspection.
+"""Plot a Brio-Wu solver CSV and save an image.
 
 Usage:
-    python scripts/plot_solution.py [path/to/solution.csv]
+    python scripts/plot_solution.py [path/to/solution.csv] [path/to/output.png]
 
 If no path is provided, the script looks for ``solution.csv`` in the current
-working directory.
+working directory and writes ``solution.png`` there.
 """
 
 from __future__ import annotations
@@ -15,11 +15,15 @@ import csv
 from pathlib import Path
 import sys
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
 EXPECTED_FIELDS = ["x", "rho", "u", "v", "w", "p", "by", "bz"]
 DEFAULT_CSV = Path("solution.csv")
+DEFAULT_OUTPUT = Path("solution.png")
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +36,13 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_CSV,
         help="CSV file to plot (defaults to solution.csv in the current directory).",
+    )
+    parser.add_argument(
+        "output_path",
+        nargs="?",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="Output image path (defaults to solution.png in the current directory).",
     )
     return parser.parse_args()
 
@@ -55,6 +66,7 @@ def load_columns(csv_path: Path) -> dict[str, list[float]]:
 def main() -> int:
     args = parse_args()
     csv_path = args.csv_path
+    output_path = args.output_path
 
     if not csv_path.is_file():
         print(f"error: CSV file not found: {csv_path}", file=sys.stderr)
@@ -87,7 +99,10 @@ def main() -> int:
 
     fig.suptitle(f"Brio-Wu profiles: {csv_path}")
     fig.tight_layout()
-    plt.show()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(output_path)
     return 0
 
 
