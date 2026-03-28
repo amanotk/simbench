@@ -17,8 +17,8 @@ Current fixtures:
 To refresh them after a CLI or output-format change:
 
 ```bash
-python3 runner/bench.py run sample/opencode-smoke.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-opencode-capture
-python3 runner/bench.py run sample/copilot-smoke.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-copilot-capture
+python3 runner/bench.py run tests/fixtures/agent_configs/opencode-smoke.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-opencode-capture
+python3 runner/bench.py run tests/fixtures/agent_configs/copilot-smoke.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-copilot-capture
 python3 runner/bench.py run sample/codex.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-codex-capture
 python3 runner/bench.py run sample/claude.toml test:smoke/py --image simbench:0.1 --result-dir /tmp/simbench-claude-capture
 ```

@@ -292,7 +292,9 @@ model = "opencode/big-pickle"
             )
 
         repo_root = Path(__file__).resolve().parents[1]
-        sample_cfg = repo_root / "sample" / "opencode-smoke.toml"
+        sample_cfg = (
+            repo_root / "tests" / "fixtures" / "agent_configs" / "opencode-smoke.toml"
+        )
         self._require_docker_image_with_opencode("simbench:0.1")
         with tempfile.TemporaryDirectory() as td:
             result_dir = Path(td) / "run"
@@ -374,7 +376,9 @@ class TestCopilotSmoke(SmokeTestHelpers, unittest.TestCase):
             )
 
         repo_root = Path(__file__).resolve().parents[1]
-        sample_cfg = repo_root / "sample" / "copilot-smoke.toml"
+        sample_cfg = (
+            repo_root / "tests" / "fixtures" / "agent_configs" / "copilot-smoke.toml"
+        )
         self._require_docker_image_with_copilot("simbench:0.1")
         with tempfile.TemporaryDirectory() as td:
             result_dir = Path(td) / "run"

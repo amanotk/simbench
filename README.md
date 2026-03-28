@@ -79,13 +79,13 @@ python3 runner/bench.py run sample/opencode.toml demo/py --image simbench:0.1
 Run the tiny OpenCode smoke task (kept under `test-tasks/`, not `benchmarks/`):
 
 ```bash
-python3 runner/bench.py run sample/opencode-smoke.toml test:smoke/py --image simbench:0.1
+python3 runner/bench.py run tests/fixtures/agent_configs/opencode-smoke.toml test:smoke/py --image simbench:0.1
 ```
 
 Run the tiny Copilot smoke task:
 
 ```bash
-python3 runner/bench.py run sample/copilot-smoke.toml test:smoke/py --image simbench:0.1
+python3 runner/bench.py run tests/fixtures/agent_configs/copilot-smoke.toml test:smoke/py --image simbench:0.1
 ```
 
 Runner smoke tests:
