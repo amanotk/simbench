@@ -245,6 +245,30 @@ StateVector conservative_to_primitive(const StateVector& conservative, double bx
   return StateVector{rho, u, v, w, pressure, by, bz};
 }
 
+void primitive_profile_to_conservative(ConstArrayView primitive_cells, ArrayView conservative_cells,
+                                       double bx, double gamma)
+{
+  const int nx = static_cast<int>(primitive_cells.extent(0));
+  for (int ix = 0; ix < nx; ++ix) {
+    const std::size_t x = static_cast<std::size_t>(ix);
+    const StateVector conservative =
+        primitive_to_conservative(row_to_state(primitive_cells, x), bx, gamma);
+    state_to_row(conservative, conservative_cells, x);
+  }
+}
+
+void conservative_profile_to_primitive(ConstArrayView conservative_cells, ArrayView primitive_cells,
+                                       double bx, double gamma)
+{
+  const int nx = static_cast<int>(conservative_cells.extent(0));
+  for (int ix = 0; ix < nx; ++ix) {
+    const std::size_t x = static_cast<std::size_t>(ix);
+    const StateVector primitive =
+        conservative_to_primitive(row_to_state(conservative_cells, x), bx, gamma);
+    state_to_row(primitive, primitive_cells, x);
+  }
+}
+
 void mc2_slopes(ConstArrayView primitive_cells, ArrayView slopes)
 {
   if (primitive_cells.extent(0) < 3U) {

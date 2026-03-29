@@ -20,7 +20,12 @@ using ArrayView      = stdex::mdspan<double, stdex::dextents<std::size_t, 2>>;
 using ConstArrayView = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
 
 struct SolverWorkspace {
-  explicit SolverWorkspace(std::size_t nx) : Nx(nx), Lbx(kGhostWidth), Ubx(kGhostWidth + nx - 1U)
+  explicit SolverWorkspace(std::size_t nx, double x_left = 0.0, double x_right = 1.0,
+                           double dt = 5.0e-4, double t_final = 0.1, double gamma = 2.0,
+                           double bx = 0.75)
+      : Nx(nx), Lbx(kGhostWidth), Ubx(kGhostWidth + nx - 1U), x_left(x_left), x_right(x_right),
+        dx(nx == 0U ? 0.0 : (x_right - x_left) / static_cast<double>(nx)), dt(dt), t_final(t_final),
+        gamma(gamma), bx(bx)
   {
     const std::size_t Nx_total    = Nx + 2U * kGhostWidth;
     const std::size_t interface_n = Nx_total - 1U;
@@ -57,6 +62,13 @@ struct SolverWorkspace {
   std::size_t Nx;  // number of grids for the physical domain (excluding the ghost cells)
   std::size_t Lbx; // lower bound of the physical domain in padded indexing
   std::size_t Ubx; // upper bound of the physical domain in padded indexing
+  double      x_left;
+  double      x_right;
+  double      dx;
+  double      dt;
+  double      t_final;
+  double      gamma;
+  double      bx;
 
   // buffer
   std::vector<double> buf_conservative;
@@ -88,6 +100,12 @@ struct SolverWorkspace {
 StateVector primitive_to_conservative(const StateVector& primitive, double bx, double gamma);
 
 StateVector conservative_to_primitive(const StateVector& conservative, double bx, double gamma);
+
+void primitive_profile_to_conservative(ConstArrayView primitive_cells, ArrayView conservative_cells,
+                                       double bx = 0.75, double gamma = 2.0);
+
+void conservative_profile_to_primitive(ConstArrayView conservative_cells, ArrayView primitive_cells,
+                                       double bx = 0.75, double gamma = 2.0);
 
 StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right, double bx,
                                      double gamma);
