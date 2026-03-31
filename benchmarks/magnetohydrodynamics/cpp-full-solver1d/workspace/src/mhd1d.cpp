@@ -217,6 +217,66 @@ void ssp_rk3_step_inplace(ConstArrayView conservative_cells, double dt, double d
   }
 }
 
+void compute_semidiscrete_rhs_patterned_inplace(SolverWorkspace& workspace, ArrayView rhs)
+{
+  const ArrayView conservative = workspace.conservative;
+  const ArrayView primitive    = workspace.primitive;
+  const ArrayView fluxes       = workspace.flux;
+
+  apply_zero_gradient_boundary(conservative, workspace.Lbx, workspace.Ubx);
+  conservative_profile_to_primitive_profile_inplace(conservative, primitive, workspace.bx,
+                                                    workspace.gamma);
+  apply_zero_gradient_boundary(primitive, workspace.Lbx, workspace.Ubx);
+  reconstruct_mc2_primitive_states(workspace);
+  compute_hlld_fluxes_from_reconstructed(workspace, workspace.bx, workspace.gamma);
+
+  const int lbx = static_cast<int>(workspace.Lbx);
+  const int ubx = static_cast<int>(workspace.Ubx);
+  for (int ix = lbx; ix <= ubx; ++ix) {
+    const std::size_t x = static_cast<std::size_t>(ix);
+    for (std::size_t component = 0; component < kStateWidth; ++component) {
+      rhs(x, component) =
+          -(fluxes(x, component) - fluxes(static_cast<std::size_t>(ix - 1), component)) /
+          workspace.dx;
+    }
+  }
+}
+
+void ssp_rk3_substep_patterned(ConstArrayView u0, ArrayView rhs, double dt, double a, double b,
+                               double c, SolverWorkspace& workspace)
+{
+  compute_semidiscrete_rhs_patterned_inplace(workspace, rhs);
+
+  const int lbx = static_cast<int>(workspace.Lbx);
+  const int ubx = static_cast<int>(workspace.Ubx);
+  for (int ix = lbx; ix <= ubx; ++ix) {
+    const std::size_t x = static_cast<std::size_t>(ix);
+    for (std::size_t component = 0; component < kStateWidth; ++component) {
+      workspace.conservative(x, component) = a * u0(x, component) +
+                                             b * workspace.conservative(x, component) +
+                                             c * dt * rhs(x, component);
+    }
+  }
+
+  conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
+                                                    workspace.bx, workspace.gamma);
+  apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+}
+
+void ssp_rk3_step_patterned_inplace(SolverWorkspace& workspace, double dt)
+{
+  const ArrayView u0  = workspace.stage1;
+  const ArrayView rhs = workspace.rhs1;
+
+  copy_cells(workspace.conservative, u0);
+
+  ssp_rk3_substep_patterned(u0, rhs, dt, 1.0, 0.0, 1.0, workspace);
+  ssp_rk3_substep_patterned(u0, rhs, dt, 3.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0, workspace);
+  ssp_rk3_substep_patterned(u0, rhs, dt, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0, workspace);
+
+  apply_zero_gradient_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
+}
+
 } // namespace
 
 StateVector primitive_to_conservative(const StateVector& primitive, double bx, double gamma)
@@ -307,9 +367,26 @@ void reconstruct_mc2_primitive_states(SolverWorkspace& workspace)
       const double right_slope = primitive_cells(static_cast<std::size_t>(ix + 1), component) -
                                  primitive_cells(i, component);
       const double slope         = mc2(left_slope, right_slope);
-      left_states(i, component)  = primitive_cells(i, component) - 0.5 * slope;
-      right_states(i, component) = primitive_cells(i, component) + 0.5 * slope;
+      left_states(i, component)  = primitive_cells(i, component) + 0.5 * slope;
+      right_states(i, component) = primitive_cells(i, component) - 0.5 * slope;
     }
+  }
+}
+
+void compute_hlld_fluxes_from_reconstructed(SolverWorkspace& workspace, double bx, double gamma)
+{
+  const ArrayView left_states  = workspace.primitive_left;
+  const ArrayView right_states = workspace.primitive_right;
+  const ArrayView fluxes       = workspace.flux;
+
+  const int lbx = static_cast<int>(workspace.Lbx);
+  const int ubx = static_cast<int>(workspace.Ubx);
+  for (int ix = lbx - 1; ix <= ubx; ++ix) {
+    const std::size_t i    = static_cast<std::size_t>(ix);
+    const StateVector flux = hlld_flux_from_primitive(
+        row_to_state(left_states, i), row_to_state(right_states, static_cast<std::size_t>(ix + 1)),
+        bx, gamma);
+    state_to_row(flux, fluxes, i);
   }
 }
 
@@ -564,6 +641,23 @@ std::vector<double> cell_centers(std::size_t nx, double x_left, double x_right)
   return centers;
 }
 
+void apply_zero_gradient_boundary(ArrayView u, std::size_t lbx, std::size_t ubx)
+{
+  const std::size_t nx_total = u.extent(0);
+
+  for (std::size_t ix = 0; ix < lbx; ++ix) {
+    for (std::size_t component = 0; component < kStateWidth; ++component) {
+      u(ix, component) = u(lbx, component);
+    }
+  }
+
+  for (std::size_t ix = ubx + 1U; ix < nx_total; ++ix) {
+    for (std::size_t component = 0; component < kStateWidth; ++component) {
+      u(ix, component) = u(ubx, component);
+    }
+  }
+}
+
 void compute_semidiscrete_rhs(ConstArrayView conservative_cells, ArrayView rhs, double dx,
                               double bx, double gamma)
 {
@@ -571,11 +665,50 @@ void compute_semidiscrete_rhs(ConstArrayView conservative_cells, ArrayView rhs, 
   compute_semidiscrete_rhs_inplace(conservative_cells, dx, bx, gamma, workspace, rhs);
 }
 
+void compute_semidiscrete_rhs_patterned(ConstArrayView conservative_cells, ArrayView rhs, double dx,
+                                        double bx, double gamma)
+{
+  const std::size_t nx = conservative_cells.extent(0) - 2U * kGhostWidth;
+  SolverWorkspace   workspace(nx);
+  workspace.dx    = dx;
+  workspace.bx    = bx;
+  workspace.gamma = gamma;
+  copy_cells(conservative_cells, workspace.conservative);
+  compute_semidiscrete_rhs_patterned_inplace(workspace, workspace.rhs1);
+  copy_cells(workspace.rhs1, rhs);
+}
+
+void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace)
+{
+  compute_semidiscrete_rhs_patterned_inplace(workspace, workspace.rhs1);
+}
+
 void ssp_rk3_step(ConstArrayView conservative_cells, ArrayView output, double dt, double dx,
                   double bx, double gamma)
 {
   SolverWorkspace workspace(conservative_cells.extent(0));
   ssp_rk3_step_inplace(conservative_cells, dt, dx, bx, gamma, workspace, output);
+}
+
+void ssp_rk3_step_patterned(ConstArrayView conservative_cells, ArrayView output, double dt,
+                            double dx, double bx, double gamma)
+{
+  const std::size_t nx = conservative_cells.extent(0) - 2U * kGhostWidth;
+  SolverWorkspace   workspace(nx);
+  workspace.dx    = dx;
+  workspace.bx    = bx;
+  workspace.gamma = gamma;
+  copy_cells(conservative_cells, workspace.conservative);
+  conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
+                                                    workspace.bx, workspace.gamma);
+  apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+  ssp_rk3_step_patterned_inplace(workspace, dt);
+  copy_cells(workspace.conservative, output);
+}
+
+void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt)
+{
+  ssp_rk3_step_patterned_inplace(workspace, dt);
 }
 
 void evolve_ssp_rk3_fixed_dt(ConstArrayView conservative_cells, ArrayView output, double t_final,
@@ -608,6 +741,50 @@ void evolve_ssp_rk3_fixed_dt(ConstArrayView conservative_cells, ArrayView output
   }
 
   copy_cells(evolved_state, output);
+}
+
+void evolve_ssp_rk3_fixed_dt_patterned(ConstArrayView conservative_cells, ArrayView output,
+                                       double t_final, double dt, double dx, double bx,
+                                       double gamma)
+{
+  if (conservative_cells.extent(0) == 0U || t_final < 0.0 || dt <= 0.0) {
+    copy_cells(conservative_cells, output);
+    return;
+  }
+
+  const std::size_t nx = conservative_cells.extent(0) - 2U * kGhostWidth;
+  SolverWorkspace   workspace(nx);
+  workspace.dx      = dx;
+  workspace.bx      = bx;
+  workspace.gamma   = gamma;
+  workspace.t_final = t_final;
+  workspace.dt      = dt;
+
+  copy_cells(conservative_cells, workspace.conservative);
+  evolve_ssp_rk3_fixed_dt_patterned(workspace);
+  copy_cells(workspace.conservative, output);
+}
+
+void evolve_ssp_rk3_fixed_dt_patterned(SolverWorkspace& workspace)
+{
+  if (workspace.t_final < 0.0 || workspace.dt <= 0.0) {
+    conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
+                                                      workspace.bx, workspace.gamma);
+    apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+    return;
+  }
+
+  conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
+                                                    workspace.bx, workspace.gamma);
+  apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+
+  double elapsed_time = 0.0;
+  while (elapsed_time < workspace.t_final) {
+    const double remaining_time = workspace.t_final - elapsed_time;
+    const double step_dt        = std::min(workspace.dt, remaining_time);
+    ssp_rk3_step_patterned_inplace(workspace, step_dt);
+    elapsed_time = (step_dt < workspace.dt) ? workspace.t_final : (elapsed_time + step_dt);
+  }
 }
 
 } // namespace mhd1d

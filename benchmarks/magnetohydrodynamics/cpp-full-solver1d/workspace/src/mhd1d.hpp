@@ -41,6 +41,7 @@ struct SolverWorkspace {
     buf_stage1.resize(padded_size);
     buf_stage2.resize(padded_size);
     buf_stage3.resize(padded_size);
+    buf_flux.resize(padded_size);
 
     conservative    = ArrayView(buf_conservative.data(), Nx_total, kStateWidth);
     primitive       = ArrayView(buf_primitive.data(), Nx_total, kStateWidth);
@@ -53,6 +54,7 @@ struct SolverWorkspace {
     stage1          = ArrayView(buf_stage1.data(), Nx_total, kStateWidth);
     stage2          = ArrayView(buf_stage2.data(), Nx_total, kStateWidth);
     stage3          = ArrayView(buf_stage3.data(), Nx_total, kStateWidth);
+    flux            = ArrayView(buf_flux.data(), Nx_total, kStateWidth);
   }
 
   using ArrayView = stdex::mdspan<double, stdex::dextents<std::size_t, 2>>;
@@ -80,6 +82,7 @@ struct SolverWorkspace {
   std::vector<double> buf_stage1;
   std::vector<double> buf_stage2;
   std::vector<double> buf_stage3;
+  std::vector<double> buf_flux;
 
   // view
   ArrayView conservative;
@@ -93,6 +96,7 @@ struct SolverWorkspace {
   ArrayView stage1;
   ArrayView stage2;
   ArrayView stage3;
+  ArrayView flux;
 };
 
 StateVector primitive_to_conservative(const StateVector& primitive, double bx, double gamma);
@@ -110,11 +114,23 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
 
 std::vector<double> cell_centers(std::size_t nx, double x_left, double x_right);
 
+void apply_zero_gradient_boundary(ArrayView u, std::size_t lbx, std::size_t ubx);
+
 void pad_zero_gradient_ghost_cells(ConstArrayView cells, ArrayView padded);
 
 void mc2_slopes(ConstArrayView primitive_cells, ArrayView slopes);
 
+// Interface semantics:
+// - primitive_left(ix, :)  is the left state at interface ix + 1/2.
+// - primitive_right(ix, :) is the right state at interface ix - 1/2.
 void reconstruct_mc2_primitive_states(SolverWorkspace& workspace);
+
+// flux(ix, :) stores the HLLD flux at interface ix + 1/2.
+// The interface state pair is:
+// - left  = primitive_left(ix, :)
+// - right = primitive_right(ix + 1, :)
+void compute_hlld_fluxes_from_reconstructed(SolverWorkspace& workspace, double bx = 0.75,
+                                            double gamma = 2.0);
 
 void reconstruct_mc2_interfaces(ConstArrayView primitive_cells, ArrayView left_states,
                                 ArrayView right_states);
@@ -122,10 +138,26 @@ void reconstruct_mc2_interfaces(ConstArrayView primitive_cells, ArrayView left_s
 void compute_semidiscrete_rhs(ConstArrayView conservative_cells, ArrayView rhs, double dx,
                               double bx = 0.75, double gamma = 2.0);
 
+void compute_semidiscrete_rhs_patterned(ConstArrayView conservative_cells, ArrayView rhs, double dx,
+                                        double bx = 0.75, double gamma = 2.0);
+
+void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace);
+
 void ssp_rk3_step(ConstArrayView conservative_cells, ArrayView output, double dt, double dx,
                   double bx = 0.75, double gamma = 2.0);
 
+void ssp_rk3_step_patterned(ConstArrayView conservative_cells, ArrayView output, double dt,
+                            double dx, double bx = 0.75, double gamma = 2.0);
+
+void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt);
+
 void evolve_ssp_rk3_fixed_dt(ConstArrayView conservative_cells, ArrayView output, double t_final,
                              double dt, double dx, double bx = 0.75, double gamma = 2.0);
+
+void evolve_ssp_rk3_fixed_dt_patterned(ConstArrayView conservative_cells, ArrayView output,
+                                       double t_final, double dt, double dx, double bx = 0.75,
+                                       double gamma = 2.0);
+
+void evolve_ssp_rk3_fixed_dt_patterned(SolverWorkspace& workspace);
 
 } // namespace mhd1d

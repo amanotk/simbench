@@ -185,6 +185,34 @@ TEST_CASE("pad_zero_gradient_ghost_cells handles a single interior cell", "[mhd1
   }
 }
 
+TEST_CASE("apply_zero_gradient_boundary overwrites ghost cells from interior boundary",
+          "[mhd1d][boundary]")
+{
+  std::vector<double>    cells_buffer(6 * mhd1d::kStateWidth, 0.0);
+  const mhd1d::ArrayView cells(cells_buffer.data(), 6, mhd1d::kStateWidth);
+
+  state_to_row(cells, 0, mhd1d::StateVector{-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0});
+  state_to_row(cells, 1, mhd1d::StateVector{1.0, 0.1, 0.2, 0.3, 2.0, 0.4, 0.5});
+  state_to_row(cells, 2, mhd1d::StateVector{2.0, 0.2, 0.3, 0.4, 2.1, 0.5, 0.6});
+  state_to_row(cells, 3, mhd1d::StateVector{3.0, 0.3, 0.4, 0.5, 2.2, 0.6, 0.7});
+  state_to_row(cells, 4, mhd1d::StateVector{4.0, 0.4, 0.5, 0.6, 2.3, 0.7, 0.8});
+  state_to_row(cells, 5, mhd1d::StateVector{-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0});
+
+  const mhd1d::StateVector interior_left  = row_to_state(cells, 1);
+  const mhd1d::StateVector interior_right = row_to_state(cells, 4);
+  const mhd1d::StateVector interior_mid_2 = row_to_state(cells, 2);
+  const mhd1d::StateVector interior_mid_3 = row_to_state(cells, 3);
+
+  mhd1d::apply_zero_gradient_boundary(cells, 1, 4);
+
+  require_state_vector_close(row_to_state(cells, 0), interior_left);
+  require_state_vector_close(row_to_state(cells, 5), interior_right);
+  require_state_vector_close(row_to_state(cells, 1), interior_left);
+  require_state_vector_close(row_to_state(cells, 2), interior_mid_2);
+  require_state_vector_close(row_to_state(cells, 3), interior_mid_3);
+  require_state_vector_close(row_to_state(cells, 4), interior_right);
+}
+
 std::vector<double> make_sample_conservative_cells()
 {
   std::vector<double>    conservative_cells(4 * mhd1d::kStateWidth, 0.0);
