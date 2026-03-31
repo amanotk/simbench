@@ -36,11 +36,7 @@ struct SolverWorkspace {
     buf_primitive_left.resize(padded_size);
     buf_primitive_right.resize(padded_size);
     buf_rhs1.resize(padded_size);
-    buf_rhs2.resize(padded_size);
-    buf_rhs3.resize(padded_size);
     buf_stage1.resize(padded_size);
-    buf_stage2.resize(padded_size);
-    buf_stage3.resize(padded_size);
     buf_flux.resize(padded_size);
 
     conservative    = ArrayView(buf_conservative.data(), Nx_total, kStateWidth);
@@ -49,11 +45,7 @@ struct SolverWorkspace {
     primitive_left  = ArrayView(buf_primitive_left.data(), Nx_total, kStateWidth);
     primitive_right = ArrayView(buf_primitive_right.data(), Nx_total, kStateWidth);
     rhs1            = ArrayView(buf_rhs1.data(), Nx_total, kStateWidth);
-    rhs2            = ArrayView(buf_rhs2.data(), Nx_total, kStateWidth);
-    rhs3            = ArrayView(buf_rhs3.data(), Nx_total, kStateWidth);
     stage1          = ArrayView(buf_stage1.data(), Nx_total, kStateWidth);
-    stage2          = ArrayView(buf_stage2.data(), Nx_total, kStateWidth);
-    stage3          = ArrayView(buf_stage3.data(), Nx_total, kStateWidth);
     flux            = ArrayView(buf_flux.data(), Nx_total, kStateWidth);
   }
 
@@ -77,11 +69,7 @@ struct SolverWorkspace {
   std::vector<double> buf_primitive_left;
   std::vector<double> buf_primitive_right;
   std::vector<double> buf_rhs1;
-  std::vector<double> buf_rhs2;
-  std::vector<double> buf_rhs3;
   std::vector<double> buf_stage1;
-  std::vector<double> buf_stage2;
-  std::vector<double> buf_stage3;
   std::vector<double> buf_flux;
 
   // view
@@ -91,11 +79,7 @@ struct SolverWorkspace {
   ArrayView primitive_left;
   ArrayView primitive_right;
   ArrayView rhs1;
-  ArrayView rhs2;
-  ArrayView rhs3;
   ArrayView stage1;
-  ArrayView stage2;
-  ArrayView stage3;
   ArrayView flux;
 };
 
@@ -116,10 +100,6 @@ std::vector<double> cell_centers(std::size_t nx, double x_left, double x_right);
 
 void apply_zero_gradient_boundary(ArrayView u, std::size_t lbx, std::size_t ubx);
 
-void pad_zero_gradient_ghost_cells(ConstArrayView cells, ArrayView padded);
-
-void mc2_slopes(ConstArrayView primitive_cells, ArrayView slopes);
-
 // Interface semantics:
 // - primitive_left(ix, :)  is the left state at interface ix + 1/2.
 // - primitive_right(ix, :) is the right state at interface ix - 1/2.
@@ -132,27 +112,15 @@ void reconstruct_mc2_primitive_states(SolverWorkspace& workspace);
 void compute_hlld_fluxes_from_reconstructed(SolverWorkspace& workspace, double bx = 0.75,
                                             double gamma = 2.0);
 
-void reconstruct_mc2_interfaces(ConstArrayView primitive_cells, ArrayView left_states,
-                                ArrayView right_states);
-
-void compute_semidiscrete_rhs(ConstArrayView conservative_cells, ArrayView rhs, double dx,
-                              double bx = 0.75, double gamma = 2.0);
-
 void compute_semidiscrete_rhs_patterned(ConstArrayView conservative_cells, ArrayView rhs, double dx,
                                         double bx = 0.75, double gamma = 2.0);
 
 void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace);
 
-void ssp_rk3_step(ConstArrayView conservative_cells, ArrayView output, double dt, double dx,
-                  double bx = 0.75, double gamma = 2.0);
-
 void ssp_rk3_step_patterned(ConstArrayView conservative_cells, ArrayView output, double dt,
                             double dx, double bx = 0.75, double gamma = 2.0);
 
 void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt);
-
-void evolve_ssp_rk3_fixed_dt(ConstArrayView conservative_cells, ArrayView output, double t_final,
-                             double dt, double dx, double bx = 0.75, double gamma = 2.0);
 
 void evolve_ssp_rk3_fixed_dt_patterned(ConstArrayView conservative_cells, ArrayView output,
                                        double t_final, double dt, double dx, double bx = 0.75,
