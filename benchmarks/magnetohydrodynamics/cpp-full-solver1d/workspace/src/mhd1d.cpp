@@ -357,8 +357,8 @@ void reconstruct_mc2_primitive_states(SolverWorkspace& workspace)
   const ArrayView left_states     = workspace.primitive_left;
   const ArrayView right_states    = workspace.primitive_right;
 
-  const int lbx = static_cast<int>(workspace.Lbx);
-  const int ubx = static_cast<int>(workspace.Ubx);
+  const int lbx = static_cast<int>(workspace.Lbx) - 1;
+  const int ubx = static_cast<int>(workspace.Ubx) + 1;
   for (int ix = lbx; ix <= ubx; ++ix) {
     const std::size_t i = static_cast<std::size_t>(ix);
     for (std::size_t component = 0; component < kStateWidth; ++component) {
