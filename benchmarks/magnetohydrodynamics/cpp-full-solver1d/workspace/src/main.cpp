@@ -22,7 +22,7 @@ constexpr mhd1d::StateVector kBrioWuRightPrimitive{
 
 } // namespace
 
-void init_brio_wu_primitive(mhd1d::SolverWorkspace& workspace)
+void initialize(mhd1d::SolverWorkspace& workspace)
 {
   for (std::size_t index = workspace.Lbx; index <= workspace.Ubx; ++index) {
     const std::size_t         center_index = index - workspace.Lbx;
@@ -37,14 +37,14 @@ void init_brio_wu_primitive(mhd1d::SolverWorkspace& workspace)
 
 int main()
 {
-  mhd1d::SolverWorkspace workspace(kBrioWuNx, kBrioWuDt, kBrioWuTFinal, kBrioWuGamma, kBrioWuBx);
+  mhd1d::SolverWorkspace workspace(kBrioWuNx, kBrioWuGamma, kBrioWuBx);
 
-  init_brio_wu_primitive(workspace);
+  initialize(workspace);
 
-  mhd1d::apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+  mhd1d::set_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
   mhd1d::primitive_profile_to_conservative(workspace.primitive, workspace.conservative,
                                            workspace.bx, workspace.gamma);
-  mhd1d::evolve_ssp_rk3_fixed_dt_patterned(workspace);
+  mhd1d::evolve_ssp_rk3(workspace, kBrioWuDt, kBrioWuTFinal);
 
   std::cout << "x,rho,u,v,w,p,by,bz\n";
   std::cout << std::setprecision(17);

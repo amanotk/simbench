@@ -13,15 +13,9 @@ namespace
 
 constexpr double kHlldEps = 1.0e-40;
 
-double sign(double value)
+double sign(const double x)
 {
-  if (value > 0.0) {
-    return 1.0;
-  }
-  if (value < 0.0) {
-    return -1.0;
-  }
-  return 0.0;
+  return copysign(1.0, x);
 }
 
 double mc2(double a, double b)
@@ -57,9 +51,8 @@ void copy_cells(ArrayView2D source, ArrayView2D destination)
   }
 }
 
-void conservative_profile_to_primitive_profile_inplace(ArrayView2D conservative_cells,
-                                                       ArrayView2D primitive_cells, double bx,
-                                                       double gamma)
+void convert_conservative_to_primitive(ArrayView2D conservative_cells, ArrayView2D primitive_cells,
+                                       double bx, double gamma)
 {
   const int nx = static_cast<int>(conservative_cells.extent(0));
   for (int ix = 0; ix < nx; ++ix) {
@@ -123,7 +116,7 @@ void primitive_profile_to_conservative(ArrayView2D primitive_cells, ArrayView2D 
   }
 }
 
-void reconstruct_mc2_primitive_states(SolverWorkspace& workspace)
+void reconstruct_mc2(SolverWorkspace& workspace)
 {
   const ArrayView2D primitive_cells = workspace.primitive;
   const ArrayView2D left_states     = workspace.primitive_left;
@@ -145,7 +138,7 @@ void reconstruct_mc2_primitive_states(SolverWorkspace& workspace)
   }
 }
 
-void compute_hlld_fluxes_from_reconstructed(SolverWorkspace& workspace, double bx, double gamma)
+void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma)
 {
   const ArrayView2D left_states  = workspace.primitive_left;
   const ArrayView2D right_states = workspace.primitive_right;
@@ -360,7 +353,7 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   };
 }
 
-void apply_zero_gradient_boundary(ArrayView2D u, std::size_t lbx, std::size_t ubx)
+void set_boundary(ArrayView2D u, std::size_t lbx, std::size_t ubx)
 {
   const std::size_t nx_total = u.extent(0);
 
@@ -377,19 +370,18 @@ void apply_zero_gradient_boundary(ArrayView2D u, std::size_t lbx, std::size_t ub
   }
 }
 
-void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace)
+void compute_rhs(SolverWorkspace& workspace)
 {
   const ArrayView2D conservative = workspace.conservative;
   const ArrayView2D primitive    = workspace.primitive;
   const ArrayView2D fluxes       = workspace.flux;
   const ArrayView2D rhs          = workspace.rhs1;
 
-  apply_zero_gradient_boundary(conservative, workspace.Lbx, workspace.Ubx);
-  conservative_profile_to_primitive_profile_inplace(conservative, primitive, workspace.bx,
-                                                    workspace.gamma);
-  apply_zero_gradient_boundary(primitive, workspace.Lbx, workspace.Ubx);
-  reconstruct_mc2_primitive_states(workspace);
-  compute_hlld_fluxes_from_reconstructed(workspace, workspace.bx, workspace.gamma);
+  set_boundary(conservative, workspace.Lbx, workspace.Ubx);
+  convert_conservative_to_primitive(conservative, primitive, workspace.bx, workspace.gamma);
+  set_boundary(primitive, workspace.Lbx, workspace.Ubx);
+  reconstruct_mc2(workspace);
+  compute_flux_hlld(workspace, workspace.bx, workspace.gamma);
 
   const int lbx = static_cast<int>(workspace.Lbx);
   const int ubx = static_cast<int>(workspace.Ubx);
@@ -403,7 +395,7 @@ void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace)
   }
 }
 
-void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt)
+void push_ssp_rk3(SolverWorkspace& workspace, double dt)
 {
   constexpr double kCoeffs[3][3] = {
       {1.0, 0.0, 1.0},
@@ -417,7 +409,7 @@ void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt)
   copy_cells(workspace.conservative, u0);
 
   for (int substep = 0; substep < 3; ++substep) {
-    compute_semidiscrete_rhs_patterned(workspace);
+    compute_rhs(workspace);
 
     const double a = kCoeffs[substep][0];
     const double b = kCoeffs[substep][1];
@@ -434,35 +426,35 @@ void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt)
       }
     }
 
-    conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
-                                                      workspace.bx, workspace.gamma);
-    apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+    convert_conservative_to_primitive(workspace.conservative, workspace.primitive, workspace.bx,
+                                      workspace.gamma);
+    set_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
   }
 
-  apply_zero_gradient_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
+  set_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
 }
 
-void evolve_ssp_rk3_fixed_dt_patterned(SolverWorkspace& workspace)
+void evolve_ssp_rk3(SolverWorkspace& workspace, double dt, double t_final)
 {
-  if (workspace.t_final < 0.0 || workspace.dt <= 0.0) {
-    apply_zero_gradient_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
-    conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
-                                                      workspace.bx, workspace.gamma);
-    apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+  if (t_final < 0.0 || dt <= 0.0) {
+    set_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
+    convert_conservative_to_primitive(workspace.conservative, workspace.primitive, workspace.bx,
+                                      workspace.gamma);
+    set_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
     return;
   }
 
-  apply_zero_gradient_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
-  conservative_profile_to_primitive_profile_inplace(workspace.conservative, workspace.primitive,
-                                                    workspace.bx, workspace.gamma);
-  apply_zero_gradient_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
+  set_boundary(workspace.conservative, workspace.Lbx, workspace.Ubx);
+  convert_conservative_to_primitive(workspace.conservative, workspace.primitive, workspace.bx,
+                                    workspace.gamma);
+  set_boundary(workspace.primitive, workspace.Lbx, workspace.Ubx);
 
   double elapsed_time = 0.0;
-  while (elapsed_time < workspace.t_final) {
-    const double remaining_time = workspace.t_final - elapsed_time;
-    const double step_dt        = std::min(workspace.dt, remaining_time);
-    ssp_rk3_step_patterned(workspace, step_dt);
-    elapsed_time = (step_dt < workspace.dt) ? workspace.t_final : (elapsed_time + step_dt);
+  while (elapsed_time < t_final) {
+    const double remaining_time = t_final - elapsed_time;
+    const double step_dt        = std::min(dt, remaining_time);
+    push_ssp_rk3(workspace, step_dt);
+    elapsed_time = (step_dt < dt) ? t_final : (elapsed_time + step_dt);
   }
 }
 

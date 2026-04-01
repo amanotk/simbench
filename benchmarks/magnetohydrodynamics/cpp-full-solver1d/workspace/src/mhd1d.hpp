@@ -16,14 +16,13 @@ constexpr std::size_t kStateWidth = 7;
 constexpr std::size_t kGhostWidth = 2;
 
 using StateVector = std::array<double, kStateWidth>;
-using ArrayView2D = stdex::mdspan<double, stdex::dextents<std::size_t, 2>>;
 using ArrayView1D = stdex::mdspan<double, stdex::dextents<std::size_t, 1>>;
+using ArrayView2D = stdex::mdspan<double, stdex::dextents<std::size_t, 2>>;
 
 struct SolverWorkspace {
-  explicit SolverWorkspace(std::size_t nx, double dt, double t_final, double gamma, double bx)
+  explicit SolverWorkspace(std::size_t nx, double gamma, double bx)
       : Nx(nx), Lbx(kGhostWidth), Ubx(kGhostWidth + nx - 1U),
-        dx(nx == 0U ? 0.0 : 1.0 / static_cast<double>(nx)), dt(dt), t_final(t_final),
-        gamma(gamma), bx(bx)
+        dx(nx == 0U ? 0.0 : 1.0 / static_cast<double>(nx)), gamma(gamma), bx(bx)
   {
     const std::size_t Nx_total    = Nx + 2U * kGhostWidth;
     const std::size_t padded_size = Nx_total * kStateWidth;
@@ -57,8 +56,6 @@ struct SolverWorkspace {
   std::size_t Lbx; // lower bound of the physical domain in padded indexing
   std::size_t Ubx; // upper bound of the physical domain in padded indexing
   double      dx;
-  double      dt;
-  double      t_final;
   double      gamma;
   double      bx;
 
@@ -95,23 +92,16 @@ void primitive_profile_to_conservative(ArrayView2D primitive_cells, ArrayView2D 
 StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right, double bx,
                                      double gamma);
 
-void apply_zero_gradient_boundary(ArrayView2D u, std::size_t lbx, std::size_t ubx);
+void set_boundary(ArrayView2D u, std::size_t lbx, std::size_t ubx);
 
-// Interface semantics:
-// - primitive_left(ix, :)  is the left state at interface ix + 1/2.
-// - primitive_right(ix, :) is the right state at interface ix - 1/2.
-void reconstruct_mc2_primitive_states(SolverWorkspace& workspace);
+void reconstruct_mc2(SolverWorkspace& workspace);
 
-// flux(ix, :) stores the HLLD flux at interface ix + 1/2.
-// The interface state pair is:
-// - left  = primitive_left(ix, :)
-// - right = primitive_right(ix + 1, :)
-void compute_hlld_fluxes_from_reconstructed(SolverWorkspace& workspace, double bx, double gamma);
+void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma);
 
-void compute_semidiscrete_rhs_patterned(SolverWorkspace& workspace);
+void compute_rhs(SolverWorkspace& workspace);
 
-void ssp_rk3_step_patterned(SolverWorkspace& workspace, double dt);
+void push_ssp_rk3(SolverWorkspace& workspace, double dt);
 
-void evolve_ssp_rk3_fixed_dt_patterned(SolverWorkspace& workspace);
+void evolve_ssp_rk3(SolverWorkspace& workspace, double dt, double t_final);
 
 } // namespace mhd1d
