@@ -13,7 +13,7 @@ constexpr double kTolerance = 1.0e-12;
 mhd1d::StateVector row_to_state(mhd1d::ArrayView2D cells, int row)
 {
   mhd1d::StateVector state{};
-  for (int component = 0; component < mhd1d::kStateWidth; ++component) {
+  for (int component = 0; component < mhd1d::N_Component; ++component) {
     state[component] = cells(row, component);
   }
   return state;
@@ -21,7 +21,7 @@ mhd1d::StateVector row_to_state(mhd1d::ArrayView2D cells, int row)
 
 void state_to_row(mhd1d::ArrayView2D cells, int row, const mhd1d::StateVector& state)
 {
-  for (int component = 0; component < mhd1d::kStateWidth; ++component) {
+  for (int component = 0; component < mhd1d::N_Component; ++component) {
     cells(row, component) = state[component];
   }
 }
@@ -29,7 +29,7 @@ void state_to_row(mhd1d::ArrayView2D cells, int row, const mhd1d::StateVector& s
 void require_state_vector_close(const mhd1d::StateVector& actual,
                                 const mhd1d::StateVector& expected)
 {
-  for (int component = 0; component < mhd1d::kStateWidth; ++component) {
+  for (int component = 0; component < mhd1d::N_Component; ++component) {
     REQUIRE(std::fabs(actual[component] - expected[component]) <= kTolerance);
   }
 }
@@ -75,21 +75,21 @@ TEST_CASE("reconstruct_mc2 preserves a constant primitive state exactly", "[mhd1
   mhd1d::SolverWorkspace workspace(4, 2.0, 0.75);
   const auto             constant_state = mhd1d::StateVector{0.9, 0.3, -0.2, 0.1, 1.8, -0.45, 0.6};
 
-  for (int index = 0; index < static_cast<int>(workspace.conservative.extent(0)); ++index) {
-    state_to_row(workspace.primitive, index, constant_state);
+  for (int index = 0; index < static_cast<int>(workspace.uc.extent(0)); ++index) {
+    state_to_row(workspace.up, index, constant_state);
   }
 
   mhd1d::reconstruct_mc2(workspace);
 
   for (int index = workspace.Lbx; index <= workspace.Ubx; ++index) {
-    require_state_vector_close(row_to_state(workspace.primitive_left, index), constant_state);
-    require_state_vector_close(row_to_state(workspace.primitive_right, index), constant_state);
+    require_state_vector_close(row_to_state(workspace.up_l, index), constant_state);
+    require_state_vector_close(row_to_state(workspace.up_r, index), constant_state);
   }
 
-  require_state_vector_close(row_to_state(workspace.primitive_left, workspace.Lbx - 1),
-                             row_to_state(workspace.primitive_right, workspace.Lbx));
-  require_state_vector_close(row_to_state(workspace.primitive_right, workspace.Ubx + 1),
-                             row_to_state(workspace.primitive_left, workspace.Ubx));
+  require_state_vector_close(row_to_state(workspace.up_l, workspace.Lbx - 1),
+                             row_to_state(workspace.up_r, workspace.Lbx));
+  require_state_vector_close(row_to_state(workspace.up_r, workspace.Ubx + 1),
+                             row_to_state(workspace.up_l, workspace.Ubx));
 }
 
 TEST_CASE("hlld_flux_from_primitive matches the physical flux for identical states",
@@ -127,14 +127,14 @@ TEST_CASE("hlld_flux_from_primitive matches the physical flux for identical stat
 
 TEST_CASE("set_boundary duplicates edge states on both sides", "[mhd1d][boundary]")
 {
-  std::vector<double>      padded_buffer(4 * mhd1d::kStateWidth, 0.0);
-  const mhd1d::ArrayView2D padded(padded_buffer.data(), 4, mhd1d::kStateWidth);
+  std::vector<double>      padded_buffer(4 * mhd1d::N_Component, 0.0);
+  const mhd1d::ArrayView2D padded(padded_buffer.data(), 4, mhd1d::N_Component);
   state_to_row(padded, 2, mhd1d::StateVector{1.0, 0.5, -0.25, 0.125, 2.0, 0.1, -0.05});
   state_to_row(padded, 1, mhd1d::StateVector{1.2, 0.6, -0.2, 0.15, 2.2, 0.12, -0.02});
   state_to_row(padded, 2, mhd1d::StateVector{1.4, 0.7, -0.15, 0.175, 2.4, 0.14, 0.01});
 
-  mhd1d::set_left_boundary(padded, padded, 1);
-  mhd1d::set_right_boundary(padded, padded, 2);
+  mhd1d::set_boundary_lb(padded, padded, 1);
+  mhd1d::set_boundary_ub(padded, padded, 2);
 
   require_state_vector_close(row_to_state(padded, 0), row_to_state(padded, 1));
   require_state_vector_close(row_to_state(padded, 1), row_to_state(padded, 1));
@@ -144,12 +144,12 @@ TEST_CASE("set_boundary duplicates edge states on both sides", "[mhd1d][boundary
 
 TEST_CASE("set_boundary handles a single interior cell", "[mhd1d][boundary]")
 {
-  std::vector<double>      padded_buffer(3 * mhd1d::kStateWidth, 0.0);
-  const mhd1d::ArrayView2D padded(padded_buffer.data(), 3, mhd1d::kStateWidth);
+  std::vector<double>      padded_buffer(3 * mhd1d::N_Component, 0.0);
+  const mhd1d::ArrayView2D padded(padded_buffer.data(), 3, mhd1d::N_Component);
   const auto               cell = mhd1d::StateVector{1.5, -0.75, 0.25, 0.0, 3.5, -0.1, 0.2};
   state_to_row(padded, 1, cell);
-  mhd1d::set_left_boundary(padded, padded, 1);
-  mhd1d::set_right_boundary(padded, padded, 1);
+  mhd1d::set_boundary_lb(padded, padded, 1);
+  mhd1d::set_boundary_ub(padded, padded, 1);
 
   for (int index = 0; index < 3; ++index) {
     require_state_vector_close(row_to_state(padded, index), cell);
@@ -158,8 +158,8 @@ TEST_CASE("set_boundary handles a single interior cell", "[mhd1d][boundary]")
 
 TEST_CASE("set_boundary overwrites ghost cells from interior boundary", "[mhd1d][boundary]")
 {
-  std::vector<double>      cells_buffer(4 * mhd1d::kStateWidth, 0.0);
-  const mhd1d::ArrayView2D cells(cells_buffer.data(), 4, mhd1d::kStateWidth);
+  std::vector<double>      cells_buffer(4 * mhd1d::N_Component, 0.0);
+  const mhd1d::ArrayView2D cells(cells_buffer.data(), 4, mhd1d::N_Component);
 
   state_to_row(cells, 0, mhd1d::StateVector{-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0});
   state_to_row(cells, 1, mhd1d::StateVector{1.0, 0.1, 0.2, 0.3, 2.0, 0.4, 0.5});
@@ -169,8 +169,8 @@ TEST_CASE("set_boundary overwrites ghost cells from interior boundary", "[mhd1d]
   const mhd1d::StateVector interior_left  = row_to_state(cells, 1);
   const mhd1d::StateVector interior_right = row_to_state(cells, 2);
 
-  mhd1d::set_left_boundary(cells, cells, 1);
-  mhd1d::set_right_boundary(cells, cells, 2);
+  mhd1d::set_boundary_lb(cells, cells, 1);
+  mhd1d::set_boundary_ub(cells, cells, 2);
 
   require_state_vector_close(row_to_state(cells, 0), interior_left);
   require_state_vector_close(row_to_state(cells, 3), interior_right);
@@ -179,8 +179,8 @@ TEST_CASE("set_boundary overwrites ghost cells from interior boundary", "[mhd1d]
 
 std::vector<double> make_sample_conservative_cells()
 {
-  std::vector<double>      conservative_cells(4 * mhd1d::kStateWidth, 0.0);
-  const mhd1d::ArrayView2D view(conservative_cells.data(), 4, mhd1d::kStateWidth);
+  std::vector<double>      conservative_cells(4 * mhd1d::N_Component, 0.0);
+  const mhd1d::ArrayView2D view(conservative_cells.data(), 4, mhd1d::N_Component);
   state_to_row(view, 0, mhd1d::StateVector{1.0, 0.1, 0.0, 0.0, 1.6, 0.20, 0.00});
   state_to_row(view, 1, mhd1d::StateVector{0.9, 0.0, 0.1, 0.0, 1.3, 0.15, 0.05});
   state_to_row(view, 2, mhd1d::StateVector{0.8, -0.1, 0.0, 0.1, 1.1, 0.10, 0.10});
@@ -195,15 +195,15 @@ TEST_CASE("compute_rhs returns finite values", "[mhd1d][evolution]")
 
   const std::vector<double> conservative_cells = make_sample_conservative_cells();
   for (int row = 0; row < nx; ++row) {
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
-      workspace.conservative(workspace.Lbx + row, component) =
-          conservative_cells[static_cast<std::size_t>(row * mhd1d::kStateWidth + component)];
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
+      workspace.uc(workspace.Lbx + row, component) =
+          conservative_cells[static_cast<std::size_t>(row * mhd1d::N_Component + component)];
     }
   }
 
   mhd1d::compute_rhs(workspace);
   for (int row = workspace.Lbx; row <= workspace.Ubx; ++row) {
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
       REQUIRE(std::isfinite(workspace.rhs(row, component)));
     }
   }
@@ -216,18 +216,18 @@ TEST_CASE("push_ssp_rk3 evolves state with finite conservative values", "[mhd1d]
 
   const std::vector<double> conservative_cells = make_sample_conservative_cells();
   for (int row = 0; row < nx; ++row) {
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
-      workspace.conservative(workspace.Lbx + row, component) =
-          conservative_cells[static_cast<std::size_t>(row * mhd1d::kStateWidth + component)];
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
+      workspace.uc(workspace.Lbx + row, component) =
+          conservative_cells[static_cast<std::size_t>(row * mhd1d::N_Component + component)];
     }
   }
 
   mhd1d::push_ssp_rk3(workspace, 1.0e-4);
 
   for (int row = workspace.Lbx; row <= workspace.Ubx; ++row) {
-    const double rho = workspace.conservative(row, 0);
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
-      REQUIRE(std::isfinite(workspace.conservative(row, component)));
+    const double rho = workspace.uc(row, 0);
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
+      REQUIRE(std::isfinite(workspace.uc(row, component)));
     }
     REQUIRE(rho > 0.0);
   }
@@ -244,11 +244,11 @@ TEST_CASE("evolve_ssp_rk3 matches repeated push_ssp_rk3 calls", "[mhd1d][evoluti
 
   const std::vector<double> conservative_cells = make_sample_conservative_cells();
   for (int row = 0; row < nx; ++row) {
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
       const double value =
-          conservative_cells[static_cast<std::size_t>(row * mhd1d::kStateWidth + component)];
-      evolved_workspace.conservative(evolved_workspace.Lbx + row, component) = value;
-      manual_workspace.conservative(manual_workspace.Lbx + row, component)   = value;
+          conservative_cells[static_cast<std::size_t>(row * mhd1d::N_Component + component)];
+      evolved_workspace.uc(evolved_workspace.Lbx + row, component) = value;
+      manual_workspace.uc(manual_workspace.Lbx + row, component)   = value;
     }
   }
 
@@ -260,9 +260,9 @@ TEST_CASE("evolve_ssp_rk3 matches repeated push_ssp_rk3 calls", "[mhd1d][evoluti
 
   for (int row = 0; row < nx; ++row) {
     const int i = evolved_workspace.Lbx + row;
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
-      REQUIRE(std::fabs(manual_workspace.conservative(i, component) -
-                        evolved_workspace.conservative(i, component)) <= kTolerance);
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
+      REQUIRE(std::fabs(manual_workspace.uc(i, component) - evolved_workspace.uc(i, component)) <=
+              kTolerance);
     }
   }
 }

@@ -22,14 +22,13 @@ mhd1d::SolverWorkspace initialize(int nx, double gamma, double bx,
 
   for (int ix = workspace.Lbx; ix <= workspace.Ubx; ++ix) {
     const mhd1d::StateVector& state = (workspace.x(ix) < 0.5) ? left_state : right_state;
-    for (int component = 0; component < mhd1d::kStateWidth; ++component) {
-      workspace.primitive(ix, component) = state[component];
+    for (int component = 0; component < mhd1d::N_Component; ++component) {
+      workspace.up(ix, component) = state[component];
     }
   }
 
-  mhd1d::set_left_boundary(workspace.primitive, workspace.primitive, workspace.Lbx);
-  mhd1d::set_right_boundary(workspace.primitive, workspace.primitive, workspace.Ubx);
-  mhd1d::primitive_profile_to_conservative(workspace.primitive, workspace.conservative, bx, gamma);
+  mhd1d::set_boundary(workspace.up, workspace.up, workspace.Lbx, workspace.Ubx);
+  mhd1d::primitive_profile_to_conservative(workspace.up, workspace.uc, bx, gamma);
 
   return workspace;
 }
@@ -39,10 +38,9 @@ void write_csv(const mhd1d::SolverWorkspace& workspace, std::ostream& os)
   os << "x,rho,u,v,w,p,by,bz\n";
   os << std::setprecision(17);
   for (int ix = workspace.Lbx; ix <= workspace.Ubx; ++ix) {
-    os << workspace.x(ix) << ',' << workspace.primitive(ix, 0) << ',' << workspace.primitive(ix, 1)
-       << ',' << workspace.primitive(ix, 2) << ',' << workspace.primitive(ix, 3) << ','
-       << workspace.primitive(ix, 4) << ',' << workspace.primitive(ix, 5) << ','
-       << workspace.primitive(ix, 6) << '\n';
+    os << workspace.x(ix) << ',' << workspace.up(ix, 0) << ',' << workspace.up(ix, 1) << ','
+       << workspace.up(ix, 2) << ',' << workspace.up(ix, 3) << ',' << workspace.up(ix, 4) << ','
+       << workspace.up(ix, 5) << ',' << workspace.up(ix, 6) << '\n';
   }
 }
 

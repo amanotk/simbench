@@ -11,7 +11,7 @@ namespace mhd1d
 namespace
 {
 
-constexpr double kHlldEps = 1.0e-40;
+constexpr double HLLD_EPS = 1.0e-40;
 
 double sign(const double x)
 {
@@ -27,7 +27,7 @@ double mc2(double a, double b)
 StateVector row_to_state(ArrayView2D cells, int row)
 {
   StateVector state{};
-  for (int component = 0; component < kStateWidth; ++component) {
+  for (int component = 0; component < N_Component; ++component) {
     state[component] = cells(row, component);
   }
   return state;
@@ -35,7 +35,7 @@ StateVector row_to_state(ArrayView2D cells, int row)
 
 void state_to_row(const StateVector& state, ArrayView2D cells, int row)
 {
-  for (int component = 0; component < kStateWidth; ++component) {
+  for (int component = 0; component < N_Component; ++component) {
     cells(row, component) = state[component];
   }
 }
@@ -44,20 +44,21 @@ void copy_cells(ArrayView2D source, ArrayView2D destination)
 {
   const int nx = source.extent(0);
   for (int ix = 0; ix < nx; ++ix) {
-    for (int component = 0; component < kStateWidth; ++component) {
+    for (int component = 0; component < N_Component; ++component) {
       destination(ix, component) = source(ix, component);
     }
   }
 }
 
-void convert_conservative_to_primitive(ArrayView2D conservative_cells, ArrayView2D primitive_cells,
-                                       double bx, double gamma)
+void convert_conservative_to_primitive(ArrayView2D conservative, ArrayView2D primitive, double bx,
+                                       double gamma)
 {
-  const int nx = conservative_cells.extent(0);
-  for (int ix = 0; ix < nx; ++ix) {
-    const StateVector primitive =
-        conservative_to_primitive(row_to_state(conservative_cells, ix), bx, gamma);
-    state_to_row(primitive, primitive_cells, ix);
+  const int ix_min = 0;
+  const int ix_max = conservative.extent(0) - 1;
+
+  for (int ix = ix_min; ix <= ix_max; ++ix) {
+    const StateVector up = conservative_to_primitive(row_to_state(conservative, ix), bx, gamma);
+    state_to_row(up, primitive, ix);
   }
 }
 
@@ -102,52 +103,55 @@ StateVector conservative_to_primitive(const StateVector& conservative, double bx
   return StateVector{rho, u, v, w, pressure, by, bz};
 }
 
-void primitive_profile_to_conservative(ArrayView2D primitive_cells, ArrayView2D conservative_cells,
-                                       double bx, double gamma)
+void primitive_profile_to_conservative(ArrayView2D primitive, ArrayView2D conservative, double bx,
+                                       double gamma)
 {
-  const int nx = primitive_cells.extent(0);
-  for (int ix = 0; ix < nx; ++ix) {
-    const StateVector conservative =
-        primitive_to_conservative(row_to_state(primitive_cells, ix), bx, gamma);
-    state_to_row(conservative, conservative_cells, ix);
+  const int ix_min = 0;
+  const int ix_max = primitive.extent(0) - 1;
+
+  for (int ix = ix_min; ix <= ix_max; ++ix) {
+    const StateVector uc = primitive_to_conservative(row_to_state(primitive, ix), bx, gamma);
+    state_to_row(uc, conservative, ix);
   }
 }
 
+StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right, double bx,
+                                     double gamma);
+
 void reconstruct_mc2(SolverWorkspace& workspace)
 {
-  const ArrayView2D primitive_cells = workspace.primitive;
-  const ArrayView2D left_states     = workspace.primitive_left;
-  const ArrayView2D right_states    = workspace.primitive_right;
+  const ArrayView2D up   = workspace.up;
+  const ArrayView2D up_l = workspace.up_l;
+  const ArrayView2D up_r = workspace.up_r;
 
   const int lbx = workspace.Lbx;
   const int ubx = workspace.Ubx;
   for (int ix = lbx; ix <= ubx; ++ix) {
-    for (int component = 0; component < kStateWidth; ++component) {
-      const double left_slope = primitive_cells(ix, component) - primitive_cells(ix - 1, component);
-      const double right_slope =
-          primitive_cells(ix + 1, component) - primitive_cells(ix, component);
-      const double slope          = mc2(left_slope, right_slope);
-      left_states(ix, component)  = primitive_cells(ix, component) + 0.5 * slope;
-      right_states(ix, component) = primitive_cells(ix, component) - 0.5 * slope;
+    for (int component = 0; component < N_Component; ++component) {
+      const double slope_l = up(ix, component) - up(ix - 1, component);
+      const double slope_r = up(ix + 1, component) - up(ix, component);
+      const double slope   = mc2(slope_l, slope_r);
+      up_l(ix, component)  = up(ix, component) + 0.5 * slope;
+      up_r(ix, component)  = up(ix, component) - 0.5 * slope;
     }
   }
 
-  set_left_boundary(left_states, right_states, lbx);
-  set_right_boundary(right_states, left_states, ubx);
+  set_boundary_lb(up_l, up_r, lbx);
+  set_boundary_ub(up_r, up_l, ubx);
 }
 
 void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma)
 {
-  const ArrayView2D left_states  = workspace.primitive_left;
-  const ArrayView2D right_states = workspace.primitive_right;
-  const ArrayView2D fluxes       = workspace.flux;
+  const ArrayView2D up_l = workspace.up_l;
+  const ArrayView2D up_r = workspace.up_r;
+  const ArrayView2D flux = workspace.flux;
 
   const int lbx = workspace.Lbx;
   const int ubx = workspace.Ubx;
   for (int ix = lbx - 1; ix <= ubx + 1; ++ix) {
-    const StateVector flux = hlld_flux_from_primitive(
-        row_to_state(left_states, ix), row_to_state(right_states, ix + 1), bx, gamma);
-    state_to_row(flux, fluxes, ix);
+    const StateVector flux_hlld =
+        hlld_flux_from_primitive(row_to_state(up_l, ix), row_to_state(up_r, ix + 1), bx, gamma);
+    state_to_row(flux_hlld, flux, ix);
   }
 }
 
@@ -230,7 +234,7 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   const double ptst  = (rosdr * ptl - rosdl * ptr + rosdl * rosdr * (vxr - vxl)) * temp;
 
   const double temp_fst_l = rosdl * sdml - bxsq;
-  const double sign1_l    = std::copysign(1.0, std::abs(temp_fst_l) - kHlldEps);
+  const double sign1_l    = std::copysign(1.0, std::abs(temp_fst_l) - HLLD_EPS);
   const double maxs1_l    = std::max(0.0, sign1_l);
   const double mins1_l    = std::min(0.0, sign1_l);
   const double itf_l      = 1.0 / (temp_fst_l + mins1_l);
@@ -254,7 +258,7 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
                        mins1_l * eel;
 
   const double temp_fst_r = rosdr * sdmr - bxsq;
-  const double sign1_r    = std::copysign(1.0, std::abs(temp_fst_r) - kHlldEps);
+  const double sign1_r    = std::copysign(1.0, std::abs(temp_fst_r) - HLLD_EPS);
   const double maxs1_r    = std::max(0.0, sign1_r);
   const double mins1_r    = std::min(0.0, sign1_r);
   const double itf_r      = 1.0 / (temp_fst_r + mins1_r);
@@ -283,7 +287,7 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   const double slst     = sm - abbx / sqrtrol;
   const double srst     = sm + abbx / sqrtror;
   const double signbx   = std::copysign(1.0, bxs);
-  const double sign1_b  = std::copysign(1.0, abbx - kHlldEps);
+  const double sign1_b  = std::copysign(1.0, abbx - HLLD_EPS);
   const double maxs1_b  = std::max(0.0, sign1_b);
   const double mins1_b  = -std::min(0.0, sign1_b);
   const double invsumro = maxs1_b / (sqrtrol + sqrtror);
@@ -349,53 +353,59 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   };
 }
 
-void set_left_boundary(ArrayView2D dst, ArrayView2D src, int lbx)
+void set_boundary_lb(ArrayView2D dst, ArrayView2D src, int lbx)
 {
-  for (int ix = 0; ix < lbx; ++ix) {
-    for (int component = 0; component < kStateWidth; ++component) {
+  const int ix_min = 0;
+
+  for (int ix = ix_min; ix < lbx; ++ix) {
+    for (int component = 0; component < N_Component; ++component) {
       dst(ix, component) = src(lbx, component);
     }
   }
 }
 
-void set_right_boundary(ArrayView2D dst, ArrayView2D src, int ubx)
+void set_boundary_ub(ArrayView2D dst, ArrayView2D src, int ubx)
 {
   const int ix_max = dst.extent(0) - 1;
 
   for (int ix = ubx + 1; ix <= ix_max; ++ix) {
-    for (int component = 0; component < kStateWidth; ++component) {
+    for (int component = 0; component < N_Component; ++component) {
       dst(ix, component) = src(ubx, component);
     }
   }
 }
 
+void set_boundary(ArrayView2D dst, ArrayView2D src, int lbx, int ubx)
+{
+  set_boundary_lb(dst, src, lbx);
+  set_boundary_ub(dst, src, ubx);
+}
+
 void compute_rhs(SolverWorkspace& workspace)
 {
-  const ArrayView2D conservative = workspace.conservative;
-  const ArrayView2D primitive    = workspace.primitive;
-  const ArrayView2D fluxes       = workspace.flux;
-  const ArrayView2D rhs          = workspace.rhs;
+  const ArrayView2D uc   = workspace.uc;
+  const ArrayView2D up   = workspace.up;
+  const ArrayView2D flux = workspace.flux;
+  const ArrayView2D rhs  = workspace.rhs;
 
-  set_left_boundary(conservative, conservative, workspace.Lbx);
-  set_right_boundary(conservative, conservative, workspace.Ubx);
-  convert_conservative_to_primitive(conservative, primitive, workspace.bx, workspace.gamma);
-  set_left_boundary(primitive, primitive, workspace.Lbx);
-  set_right_boundary(primitive, primitive, workspace.Ubx);
+  set_boundary(uc, uc, workspace.Lbx, workspace.Ubx);
+  convert_conservative_to_primitive(uc, up, workspace.bx, workspace.gamma);
+  set_boundary(up, up, workspace.Lbx, workspace.Ubx);
   reconstruct_mc2(workspace);
   compute_flux_hlld(workspace, workspace.bx, workspace.gamma);
 
   const int lbx = workspace.Lbx;
   const int ubx = workspace.Ubx;
   for (int ix = lbx; ix <= ubx; ++ix) {
-    for (int component = 0; component < kStateWidth; ++component) {
-      rhs(ix, component) = -(fluxes(ix, component) - fluxes(ix - 1, component)) / workspace.dx;
+    for (int component = 0; component < N_Component; ++component) {
+      rhs(ix, component) = -(flux(ix, component) - flux(ix - 1, component)) / workspace.dx;
     }
   }
 }
 
 void push_ssp_rk3(SolverWorkspace& workspace, double dt)
 {
-  constexpr double kCoeffs[3][3] = {
+  constexpr double coeffs[3][3] = {
       {1.0, 0.0, 1.0},
       {3.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0},
       {1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0},
@@ -404,31 +414,27 @@ void push_ssp_rk3(SolverWorkspace& workspace, double dt)
   const ArrayView2D prev = workspace.prev;
   const ArrayView2D rhs  = workspace.rhs;
 
-  copy_cells(workspace.conservative, prev);
+  copy_cells(workspace.uc, prev);
 
   for (int substep = 0; substep < 3; ++substep) {
     compute_rhs(workspace);
 
-    const double a = kCoeffs[substep][0];
-    const double b = kCoeffs[substep][1];
-    const double c = kCoeffs[substep][2];
+    const double a = coeffs[substep][0];
+    const double b = coeffs[substep][1];
+    const double c = coeffs[substep][2];
 
     const int lbx = workspace.Lbx;
     const int ubx = workspace.Ubx;
     for (int ix = lbx; ix <= ubx; ++ix) {
-      for (int component = 0; component < kStateWidth; ++component) {
-        workspace.conservative(ix, component) = a * prev(ix, component) +
-                                                b * workspace.conservative(ix, component) +
-                                                c * dt * rhs(ix, component);
+      for (int component = 0; component < N_Component; ++component) {
+        workspace.uc(ix, component) =
+            a * prev(ix, component) + b * workspace.uc(ix, component) + c * dt * rhs(ix, component);
       }
     }
 
-    set_left_boundary(workspace.conservative, workspace.conservative, workspace.Lbx);
-    set_right_boundary(workspace.conservative, workspace.conservative, workspace.Ubx);
-    convert_conservative_to_primitive(workspace.conservative, workspace.primitive, workspace.bx,
-                                      workspace.gamma);
-    set_left_boundary(workspace.primitive, workspace.primitive, workspace.Lbx);
-    set_right_boundary(workspace.primitive, workspace.primitive, workspace.Ubx);
+    set_boundary(workspace.uc, workspace.uc, workspace.Lbx, workspace.Ubx);
+    convert_conservative_to_primitive(workspace.uc, workspace.up, workspace.bx, workspace.gamma);
+    set_boundary(workspace.up, workspace.up, workspace.Lbx, workspace.Ubx);
   }
 }
 
