@@ -29,10 +29,8 @@ def assert_csv_rows_close(
 
 
 def _build_public_tests() -> Path:
-    build_dir = "build_public"
-    subprocess.run(
-        ["cmake", "-S", ".", "-B", build_dir], check=True, cwd=WORKSPACE_ROOT
-    )
+    build_dir = "build"
+    subprocess.run(["cmake", "-S", ".", "-B", build_dir], check=True, cwd=WORKSPACE_ROOT)
     subprocess.run(
         [
             "cmake",
@@ -60,7 +58,7 @@ def test_public_brio_wu_cli_matches_reference_grid() -> None:
     _build_public_tests()
 
     solver_name = "cpp_full_solver1d.exe" if os.name == "nt" else "cpp_full_solver1d"
-    solver_path = WORKSPACE_ROOT / "build_public/bin" / solver_name
+    solver_path = WORKSPACE_ROOT / "build/bin" / solver_name
     assert solver_path.exists()
 
     completed = subprocess.run(
@@ -71,9 +69,7 @@ def test_public_brio_wu_cli_matches_reference_grid() -> None:
     )
 
     rows = list(csv.reader(completed.stdout.splitlines()))
-    golden_rows = list(
-        csv.reader(GOLDEN_CSV_PATH.read_text(encoding="utf-8").splitlines())
-    )
+    golden_rows = list(csv.reader(GOLDEN_CSV_PATH.read_text(encoding="utf-8").splitlines()))
 
     assert golden_rows[0] == ["x", "rho", "u", "v", "w", "p", "by", "bz"]
 
