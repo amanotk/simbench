@@ -394,31 +394,3 @@ to the location of zero in the wave fan:
 
 All fluxes use the conservative component ordering defined in  
 `basic_equations.md`.
-
-## Implementation notes
-
-- This benchmark follows one specific HLLD implementation convention rather than
-  an arbitrary mathematically equivalent variant.
-
-- Small starred-state denominator
-  If $|D_\alpha|$ is extremely small, do not apply the raw starred-state update
-  by dividing through that value. Instead, replace the starred transverse
-  updates with:
-
-```math
-v_\alpha^\ast = v_\alpha, \quad
-w_\alpha^\ast = w_\alpha, \quad
-B_{y,\alpha}^\ast = B_{y,\alpha}, \quad
-B_{z,\alpha}^\ast = B_{z,\alpha}.
-```
-
-- Small $B_x$
-  When $B_x=0$, the rotational waves collapse and the double-star regions become
-  unnecessary. In that case, do not use the double-star states for flux
-  calculation.
-
-  For this benchmark, a merely small nonzero $|B_x|$ should still be treated as
-  a nondegenerate case unless some other guarded quantity, such as $D_\alpha$,
-  becomes numerically singular.
-
-- Assume all benchmark inputs are admissible physical states.

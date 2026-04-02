@@ -126,7 +126,7 @@ def _run_agent_in_docker(
         opencode_state_dir.mkdir(parents=True, exist_ok=True)
         docker_cmd += [
             "-e",
-            "XDG_DATA_HOME=/opencode-data",
+            "HOME=/opencode-data",
             "-v",
             f"{str(opencode_state_dir)}:/opencode-data:rw",
         ]

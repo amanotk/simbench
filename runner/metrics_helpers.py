@@ -143,7 +143,7 @@ def _opencode_state_dir(run_dir: Path) -> Path:
 
 def _collect_opencode_usage_metrics(*, state_dir: Path) -> dict[str, Any]:
     env = dict(os.environ)
-    env["XDG_DATA_HOME"] = str(state_dir)
+    env["HOME"] = str(state_dir)
     cmd = ["opencode", "stats", "--models", "1"]
     try:
         proc = subprocess.run(

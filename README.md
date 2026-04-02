@@ -30,6 +30,7 @@ Configured in `agents_default.toml` (with per-agent overrides under `sample/*.to
 ## Available Benchmarks
 - Demo benchmark for Runge-Kutta 2 (RK2) midpoint method.
 - 3D wave equation solver with finite difference method.
+- Magnetohydrodynamics (MHD) solver.
 
 ## Quick Start
 

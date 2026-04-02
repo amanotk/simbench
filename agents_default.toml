@@ -10,8 +10,10 @@ pass_env = [
 ]
 pre = [
   "mkdir -p \"$HOME/.local/share/opencode\"",
+  "mkdir -p \"$HOME/.config/opencode\"",
   "if [ -f /opencode-auth.json ]; then cp /opencode-auth.json \"$HOME/.local/share/opencode/auth.json\"; fi",
-  "if [ -f /opencode-config.json ]; then export OPENCODE_CONFIG=/opencode-config.json; elif [ -f /opencode-config.jsonc ]; then export OPENCODE_CONFIG=/opencode-config.jsonc; fi",
+  "if [ -f /opencode-config.json ]; then cp /opencode-config.json \"$HOME/.config/opencode/opencode.json\"; fi",
+  "if [ -f /opencode-config.jsonc ]; then cp /opencode-config.jsonc \"$HOME/.config/opencode/opencode.jsonc\"; fi",
 ]
 cmd = "stdbuf -oL -eL opencode run -m \"$BENCH_MODEL\" $BENCH_MODEL_OPTIONS_ARGS --thinking --dir / \"$(cat \"$BENCH_PROMPT_FILE\")\" -f \"$BENCH_SPEC_FILE\""
 

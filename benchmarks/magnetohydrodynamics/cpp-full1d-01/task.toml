@@ -1,0 +1,8 @@
+id = "cpp-full1d-01"
+suite = "magnetohydrodynamics"
+language = "cpp"
+time_limit_sec = 600
+eval_cmd = "/eval/run.sh"
+prompt = "Read /run/spec.md, /work/basic_equations.md, and /work/hlld.md, then solve the task in /work."
+use_shared_workspace = true
+use_shared_eval = true
