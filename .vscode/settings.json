@@ -1,0 +1,35 @@
+{
+    "files.exclude": {
+        "**/.git/objects/**": true,
+        "**/.git/refs/**": true,
+        "**/.pytest_cache/**": true,
+        "**/__pycache__": true,
+        "**/.ruff_cache/**": true,
+        "**/.venv/**": true,
+        "**/.opencode-data/**": true
+    },
+    "files.watcherExclude": {
+        "**/runs/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/refs/**": true,
+        "**/.ruff_cache/**": true,
+        "**/.venv/**": true,
+        "**/.opencode-data/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/build/**": true
+    },
+    "search.exclude": {
+        "**/runs/**": true,
+        "**/.git/**": true,
+        "**/.ruff_cache/**": true,
+        "**/.venv/**": true,
+        "**/.opencode-data/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true
+    },
+    "C_Cpp.files.exclude": {
+        "**/build/**": true,
+        "**/runs/**": true
+    }
+}
