@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
-StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right, double bx,
-                                     double gamma)
+void hlld_flux_from_primitive(const double* left, const double* right, double bx, double gamma,
+                              double* flux)
 {
   constexpr double epsilon = 1.0e-40;
 
@@ -58,20 +58,20 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   const double sl = std::min(vxl, vxr) - std::max(cfl, cfr);
   const double sr = std::max(vxl, vxr) + std::max(cfl, cfr);
 
-  const StateVector fql{rxl,
-                        rxl * vxl + ptl - bxsq,
-                        rxl * vyl - bxs * byl,
-                        rxl * vzl - bxs * bzl,
-                        vxl * (eel + ptl - bxsq) - bxs * (vyl * byl + vzl * bzl),
-                        byl * vxl - bxs * vyl,
-                        bzl * vxl - bxs * vzl};
-  const StateVector fqr{rxr,
-                        rxr * vxr + ptr - bxsq,
-                        rxr * vyr - bxs * byr,
-                        rxr * vzr - bxs * bzr,
-                        vxr * (eer + ptr - bxsq) - bxs * (vyr * byr + vzr * bzr),
-                        byr * vxr - bxs * vyr,
-                        bzr * vxr - bxs * vzr};
+  const double fql[7] = {rxl,
+                         rxl * vxl + ptl - bxsq,
+                         rxl * vyl - bxs * byl,
+                         rxl * vzl - bxs * bzl,
+                         vxl * (eel + ptl - bxsq) - bxs * (vyl * byl + vzl * bzl),
+                         byl * vxl - bxs * vyl,
+                         bzl * vxl - bxs * vzl};
+  const double fqr[7] = {rxr,
+                         rxr * vxr + ptr - bxsq,
+                         rxr * vyr - bxs * byr,
+                         rxr * vzr - bxs * bzr,
+                         vxr * (eer + ptr - bxsq) - bxs * (vyr * byr + vzr * bzr),
+                         byr * vxr - bxs * vyr,
+                         bzr * vxr - bxs * vzr};
 
   const double sdl   = sl - vxl;
   const double sdr   = sr - vxr;
@@ -185,20 +185,18 @@ StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector&
   const double temp_flux_l = mslst - msl;
   const double temp_flux_r = msrst - msr;
 
-  return StateVector{
-      (fql[0] - msl * rol - rolst * temp_flux_l + roldst * mslst) * maxs1 +
-          (fqr[0] - msr * ror - rorst * temp_flux_r + rordst * msrst) * mins1,
-      (fql[1] - msl * rxl - rxlst * temp_flux_l + rxldst * mslst) * maxs1 +
-          (fqr[1] - msr * rxr - rxrst * temp_flux_r + rxrdst * msrst) * mins1,
-      (fql[2] - msl * ryl - rylst * temp_flux_l + ryldst * mslst) * maxs1 +
-          (fqr[2] - msr * ryr - ryrst * temp_flux_r + ryrdst * msrst) * mins1,
-      (fql[3] - msl * rzl - rzlst * temp_flux_l + rzldst * mslst) * maxs1 +
-          (fqr[3] - msr * rzr - rzrst * temp_flux_r + rzrdst * msrst) * mins1,
-      (fql[4] - msl * eel - eelst * temp_flux_l + eeldst * mslst) * maxs1 +
-          (fqr[4] - msr * eer - eerst * temp_flux_r + eerdst * msrst) * mins1,
-      (fql[5] - msl * byl - bylst * temp_flux_l + byldst * mslst) * maxs1 +
-          (fqr[5] - msr * byr - byrst * temp_flux_r + byrdst * msrst) * mins1,
-      (fql[6] - msl * bzl - bzlst * temp_flux_l + bzldst * mslst) * maxs1 +
-          (fqr[6] - msr * bzr - bzrst * temp_flux_r + bzrdst * msrst) * mins1,
-  };
+  flux[0] = (fql[0] - msl * rol - rolst * temp_flux_l + roldst * mslst) * maxs1 +
+            (fqr[0] - msr * ror - rorst * temp_flux_r + rordst * msrst) * mins1;
+  flux[1] = (fql[1] - msl * rxl - rxlst * temp_flux_l + rxldst * mslst) * maxs1 +
+            (fqr[1] - msr * rxr - rxrst * temp_flux_r + rxrdst * msrst) * mins1;
+  flux[2] = (fql[2] - msl * ryl - rylst * temp_flux_l + ryldst * mslst) * maxs1 +
+            (fqr[2] - msr * ryr - ryrst * temp_flux_r + ryrdst * msrst) * mins1;
+  flux[3] = (fql[3] - msl * rzl - rzlst * temp_flux_l + rzldst * mslst) * maxs1 +
+            (fqr[3] - msr * rzr - rzrst * temp_flux_r + rzrdst * msrst) * mins1;
+  flux[4] = (fql[4] - msl * eel - eelst * temp_flux_l + eeldst * mslst) * maxs1 +
+            (fqr[4] - msr * eer - eerst * temp_flux_r + eerdst * msrst) * mins1;
+  flux[5] = (fql[5] - msl * byl - bylst * temp_flux_l + byldst * mslst) * maxs1 +
+            (fqr[5] - msr * byr - byrst * temp_flux_r + byrdst * msrst) * mins1;
+  flux[6] = (fql[6] - msl * bzl - bzlst * temp_flux_l + bzldst * mslst) * maxs1 +
+            (fqr[6] - msr * bzr - bzrst * temp_flux_r + bzrdst * msrst) * mins1;
 }

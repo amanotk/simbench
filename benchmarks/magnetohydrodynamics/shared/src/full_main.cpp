@@ -43,7 +43,7 @@ mhd1d::SolverWorkspace initialize(int nx, double gamma, double bx,
   }
 
   mhd1d::set_boundary(workspace.up, workspace.up, workspace.Lbx, workspace.Ubx);
-  mhd1d::primitive_profile_to_conservative(workspace.up, workspace.uc, bx, gamma);
+  mhd1d::convert_primitive_to_conservative(workspace.up, workspace.uc, bx, gamma);
 
   return workspace;
 }

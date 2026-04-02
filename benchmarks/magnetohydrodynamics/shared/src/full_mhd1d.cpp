@@ -4,12 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <utility>
 
 namespace mhd1d
-{
-
-namespace
 {
 
 double sign(const double x)
@@ -23,47 +19,8 @@ double mc2(double a, double b)
          std::min({2.0 * std::abs(a), 2.0 * std::abs(b), 0.5 * std::abs(a + b)});
 }
 
-StateVector row_to_state(ArrayView2D cells, int row)
-{
-  StateVector state{};
-  for (int component = 0; component < N_Component; ++component) {
-    state[component] = cells(row, component);
-  }
-  return state;
-}
-
-void state_to_row(const StateVector& state, ArrayView2D cells, int row)
-{
-  for (int component = 0; component < N_Component; ++component) {
-    cells(row, component) = state[component];
-  }
-}
-
-void copy_cells(ArrayView2D source, ArrayView2D destination)
-{
-  const int nx = source.extent(0);
-  for (int ix = 0; ix < nx; ++ix) {
-    for (int component = 0; component < N_Component; ++component) {
-      destination(ix, component) = source(ix, component);
-    }
-  }
-}
-
-void convert_conservative_to_primitive(ArrayView2D conservative, ArrayView2D primitive, double bx,
-                                       double gamma)
-{
-  const int ix_min = 0;
-  const int ix_max = conservative.extent(0) - 1;
-
-  for (int ix = ix_min; ix <= ix_max; ++ix) {
-    const StateVector up = conservative_to_primitive(row_to_state(conservative, ix), bx, gamma);
-    state_to_row(up, primitive, ix);
-  }
-}
-
-} // namespace
-
-StateVector primitive_to_conservative(const StateVector& primitive, double bx, double gamma)
+void primitive_to_conservative(const double* primitive, double* conservative, double bx,
+                               double gamma)
 {
   const double rho      = primitive[0];
   const double u        = primitive[1];
@@ -76,13 +33,17 @@ StateVector primitive_to_conservative(const StateVector& primitive, double bx, d
   const double kinetic_energy  = 0.5 * rho * (u * u + v * v + w * w);
   const double magnetic_energy = 0.5 * (bx * bx + by * by + bz * bz);
 
-  return StateVector{
-      rho, rho * u, rho * v, rho * w, pressure / (gamma - 1.0) + kinetic_energy + magnetic_energy,
-      by,  bz,
-  };
+  conservative[0] = rho;
+  conservative[1] = rho * u;
+  conservative[2] = rho * v;
+  conservative[3] = rho * w;
+  conservative[4] = pressure / (gamma - 1.0) + kinetic_energy + magnetic_energy;
+  conservative[5] = by;
+  conservative[6] = bz;
 }
 
-StateVector conservative_to_primitive(const StateVector& conservative, double bx, double gamma)
+void conservative_to_primitive(const double* conservative, double* primitive, double bx,
+                               double gamma)
 {
   const double rho = conservative[0];
   if (rho <= 0.0) {
@@ -99,55 +60,34 @@ StateVector conservative_to_primitive(const StateVector& conservative, double bx
   const double magnetic_energy = 0.5 * (bx * bx + by * by + bz * bz);
   const double pressure = (gamma - 1.0) * (conservative[4] - kinetic_energy - magnetic_energy);
 
-  return StateVector{rho, u, v, w, pressure, by, bz};
+  primitive[0] = rho;
+  primitive[1] = u;
+  primitive[2] = v;
+  primitive[3] = w;
+  primitive[4] = pressure;
+  primitive[5] = by;
+  primitive[6] = bz;
 }
 
-void primitive_profile_to_conservative(ArrayView2D primitive, ArrayView2D conservative, double bx,
+void convert_primitive_to_conservative(ArrayView2D primitive, ArrayView2D conservative, double bx,
                                        double gamma)
 {
   const int ix_min = 0;
   const int ix_max = primitive.extent(0) - 1;
 
   for (int ix = ix_min; ix <= ix_max; ++ix) {
-    const StateVector uc = primitive_to_conservative(row_to_state(primitive, ix), bx, gamma);
-    state_to_row(uc, conservative, ix);
+    primitive_to_conservative(&primitive(ix, 0), &conservative(ix, 0), bx, gamma);
   }
 }
 
-void reconstruct_mc2(SolverWorkspace& workspace)
+void convert_conservative_to_primitive(ArrayView2D conservative, ArrayView2D primitive, double bx,
+                                       double gamma)
 {
-  const ArrayView2D up   = workspace.up;
-  const ArrayView2D up_l = workspace.up_l;
-  const ArrayView2D up_r = workspace.up_r;
+  const int ix_min = 0;
+  const int ix_max = conservative.extent(0) - 1;
 
-  const int lbx = workspace.Lbx;
-  const int ubx = workspace.Ubx;
-  for (int ix = lbx; ix <= ubx; ++ix) {
-    for (int component = 0; component < N_Component; ++component) {
-      const double slope_l = up(ix, component) - up(ix - 1, component);
-      const double slope_r = up(ix + 1, component) - up(ix, component);
-      const double slope   = mc2(slope_l, slope_r);
-      up_l(ix, component)  = up(ix, component) + 0.5 * slope;
-      up_r(ix, component)  = up(ix, component) - 0.5 * slope;
-    }
-  }
-
-  set_boundary_lb(up_l, up_r, lbx);
-  set_boundary_ub(up_r, up_l, ubx);
-}
-
-void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma)
-{
-  const ArrayView2D up_l = workspace.up_l;
-  const ArrayView2D up_r = workspace.up_r;
-  const ArrayView2D flux = workspace.flux;
-
-  const int lbx = workspace.Lbx;
-  const int ubx = workspace.Ubx;
-  for (int ix = lbx - 1; ix <= ubx + 1; ++ix) {
-    const StateVector flux_hlld =
-        ::hlld_flux_from_primitive(row_to_state(up_l, ix), row_to_state(up_r, ix + 1), bx, gamma);
-    state_to_row(flux_hlld, flux, ix);
+  for (int ix = ix_min; ix <= ix_max; ++ix) {
+    conservative_to_primitive(&conservative(ix, 0), &primitive(ix, 0), bx, gamma);
   }
 }
 
@@ -179,6 +119,41 @@ void set_boundary(ArrayView2D dst, ArrayView2D src, int lbx, int ubx)
   set_boundary_ub(dst, src, ubx);
 }
 
+void compute_lr(SolverWorkspace& workspace)
+{
+  const ArrayView2D up   = workspace.up;
+  const ArrayView2D up_l = workspace.up_l;
+  const ArrayView2D up_r = workspace.up_r;
+
+  const int lbx = workspace.Lbx;
+  const int ubx = workspace.Ubx;
+  for (int ix = lbx; ix <= ubx; ++ix) {
+    for (int component = 0; component < N_Component; ++component) {
+      const double slope_l = up(ix, component) - up(ix - 1, component);
+      const double slope_r = up(ix + 1, component) - up(ix, component);
+      const double slope   = mc2(slope_l, slope_r);
+      up_l(ix, component)  = up(ix, component) + 0.5 * slope;
+      up_r(ix, component)  = up(ix, component) - 0.5 * slope;
+    }
+  }
+
+  set_boundary_lb(up_l, up_r, lbx);
+  set_boundary_ub(up_r, up_l, ubx);
+}
+
+void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma)
+{
+  const ArrayView2D up_l = workspace.up_l;
+  const ArrayView2D up_r = workspace.up_r;
+  const ArrayView2D flux = workspace.flux;
+
+  const int lbx = workspace.Lbx;
+  const int ubx = workspace.Ubx;
+  for (int ix = lbx - 1; ix <= ubx + 1; ++ix) {
+    ::hlld_flux_from_primitive(&up_l(ix, 0), &up_r(ix + 1, 0), bx, gamma, &flux(ix, 0));
+  }
+}
+
 void compute_rhs(SolverWorkspace& workspace)
 {
   const ArrayView2D uc   = workspace.uc;
@@ -189,7 +164,7 @@ void compute_rhs(SolverWorkspace& workspace)
   set_boundary(uc, uc, workspace.Lbx, workspace.Ubx);
   convert_conservative_to_primitive(uc, up, workspace.bx, workspace.gamma);
   set_boundary(up, up, workspace.Lbx, workspace.Ubx);
-  reconstruct_mc2(workspace);
+  compute_lr(workspace);
   compute_flux_hlld(workspace, workspace.bx, workspace.gamma);
 
   const int lbx = workspace.Lbx;
@@ -197,6 +172,16 @@ void compute_rhs(SolverWorkspace& workspace)
   for (int ix = lbx; ix <= ubx; ++ix) {
     for (int component = 0; component < N_Component; ++component) {
       rhs(ix, component) = -(flux(ix, component) - flux(ix - 1, component)) / workspace.dx;
+    }
+  }
+}
+
+void copy(ArrayView2D source, ArrayView2D destination)
+{
+  const int nx = source.extent(0);
+  for (int ix = 0; ix < nx; ++ix) {
+    for (int component = 0; component < N_Component; ++component) {
+      destination(ix, component) = source(ix, component);
     }
   }
 }
@@ -212,7 +197,7 @@ void push_ssp_rk3(SolverWorkspace& workspace, double dt)
   const ArrayView2D prev = workspace.prev;
   const ArrayView2D rhs  = workspace.rhs;
 
-  copy_cells(workspace.uc, prev);
+  copy(workspace.uc, prev);
 
   for (int substep = 0; substep < 3; ++substep) {
     compute_rhs(workspace);
