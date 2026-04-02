@@ -144,7 +144,7 @@ class TestBenchHelpers(unittest.TestCase):
         cases = [
             ("s/t", (None, "s", "t")),
             ("benchmark: s/t", (bench.BENCH_ROOT, "s", "t")),
-            ("test-tasks: smoke/py", (bench.TEST_TASK_ROOT, "smoke", "py")),
+            ("tests/test-tasks: smoke/py", (bench.TEST_TASK_ROOT, "smoke", "py")),
         ]
 
         for task_ref, expected in cases:
