@@ -1,4 +1,4 @@
-#include "full_mhd1d.hpp"
+#include "mhd1d.hpp"
 
 #include <cstdlib>
 #include <iomanip>

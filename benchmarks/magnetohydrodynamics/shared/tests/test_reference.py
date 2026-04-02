@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import csv
 import os
+import sys
 import subprocess
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from benchmarks.magnetohydrodynamics.shared.eval.mhd1d_shared import (
+    TOLERANCE,
+    assert_csv_rows_close,
+)
 
 
 SHARED_ROOT = Path(__file__).resolve().parents[1]
@@ -13,13 +24,11 @@ def _build_reference_solver() -> Path:
     build_dir = SHARED_ROOT / "build"
     subprocess.run(["cmake", "-S", str(SHARED_ROOT), "-B", str(build_dir)], check=True)
     subprocess.run(
-        ["cmake", "--build", str(build_dir), "--target", "full_mhd1d_reference"],
+        ["cmake", "--build", str(build_dir), "--target", "mhd1d_reference"],
         check=True,
     )
 
-    binary_name = (
-        "full_mhd1d_reference.exe" if os.name == "nt" else "full_mhd1d_reference"
-    )
+    binary_name = "mhd1d_reference.exe" if os.name == "nt" else "mhd1d_reference"
     binary_path = build_dir / "bin" / binary_name
     assert binary_path.exists()
     return binary_path
@@ -37,8 +46,11 @@ def test_shared_reference_solver_matches_fixture(tmp_path: Path) -> None:
     )
     output_csv_path.write_text(completed.stdout, encoding="utf-8")
 
-    output_rows = output_csv_path.read_text(encoding="utf-8").splitlines()
-    reference_rows = FIXTURE_CSV_PATH.read_text(encoding="utf-8").splitlines()
+    output_rows = list(
+        csv.reader(output_csv_path.read_text(encoding="utf-8").splitlines())
+    )
+    reference_rows = list(
+        csv.reader(FIXTURE_CSV_PATH.read_text(encoding="utf-8").splitlines())
+    )
 
-    assert len(output_rows) == len(reference_rows)
-    assert output_rows == reference_rows
+    assert_csv_rows_close(output_rows, reference_rows, tolerance=TOLERANCE)

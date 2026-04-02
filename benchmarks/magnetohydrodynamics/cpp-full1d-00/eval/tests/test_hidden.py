@@ -1,7 +1,9 @@
-import math
+import csv
 import os
 import subprocess
 from pathlib import Path
+
+from mhd1d_shared import TOLERANCE, assert_csv_rows_close
 
 SOLVER_TARGET = "cpp_full_solver1d"
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2] / "workspace"
@@ -43,15 +45,16 @@ def test_hidden_brio_wu_cli_matches_fixture(tmp_path: Path) -> None:
     )
     output_csv_path.write_text(completed.stdout, encoding="utf-8")
 
-    output_rows = output_csv_path.read_text(encoding="utf-8").splitlines()
-    reference_rows = REFERENCE_CSV_PATH.read_text(encoding="utf-8").splitlines()
+    output_rows = list(
+        csv.reader(output_csv_path.read_text(encoding="utf-8").splitlines())
+    )
+    reference_rows = list(
+        csv.reader(REFERENCE_CSV_PATH.read_text(encoding="utf-8").splitlines())
+    )
 
-    assert len(output_rows) == len(reference_rows) + 1
-    assert output_rows[1:] == reference_rows
-
-    for column_name in ("v", "w", "bz"):
-        for row in output_rows[1:]:
-            values = row.split(",")
-            assert len(values) == 8
-            value = float(values[{"v": 3, "w": 4, "bz": 6}[column_name]])
-            assert math.isfinite(value)
+    assert_csv_rows_close(
+        output_rows,
+        reference_rows,
+        tolerance=TOLERANCE,
+        expected_header=["x", "rho", "u", "v", "w", "p", "by", "bz"],
+    )

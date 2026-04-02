@@ -22,6 +22,7 @@ endif()
 
 add_library(mhd1d_solver
   src/mhd1d.cpp
+  src/hlld.cpp
 )
 
 target_include_directories(mhd1d_solver PUBLIC

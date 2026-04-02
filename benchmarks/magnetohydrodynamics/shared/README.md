@@ -7,13 +7,13 @@ Brio-Wu fixtures used by the magnetohydrodynamics benchmarks.
 
 ```bash
 cmake -S benchmarks/magnetohydrodynamics/shared -B benchmarks/magnetohydrodynamics/shared/build
-cmake --build benchmarks/magnetohydrodynamics/shared/build --target full_mhd1d_reference
+cmake --build benchmarks/magnetohydrodynamics/shared/build --target mhd1d_reference
 ```
 
 ## Run the shared reference solver
 
 ```bash
-benchmarks/magnetohydrodynamics/shared/build/bin/full_mhd1d_reference > benchmarks/magnetohydrodynamics/shared/build/solution.csv
+benchmarks/magnetohydrodynamics/shared/build/bin/mhd1d_reference > benchmarks/magnetohydrodynamics/shared/build/solution.csv
 ```
 
 ## Plot the output

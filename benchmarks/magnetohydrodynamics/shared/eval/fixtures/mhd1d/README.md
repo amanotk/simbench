@@ -1,7 +1,7 @@
 # mhd1d hidden fixtures
 
-This directory will store the hidden reference fixtures for
-`cpp-full-solver1d`.
+This directory stores the hidden reference fixtures for
+the full 1D MHD variants (starting with `cpp-full1d-00`).
 
 ## Contents
 

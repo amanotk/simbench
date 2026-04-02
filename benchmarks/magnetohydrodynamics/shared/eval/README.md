@@ -1,7 +1,7 @@
 # Shared eval assets
 
 This directory holds suite-wide hidden-eval documentation for
-`cpp-full-solver1d`.
+the full 1D MHD variants (starting with `cpp-full1d-00`).
 
 ## Hidden reference lifecycle
 

@@ -8,11 +8,11 @@ This suite contains benchmark tasks for ideal magnetohydrodynamics solvers.
 - `shared/workspace/hlld.md`: HLLD algorithm notes for solver tasks.
 - `cpp-hlld-00/`: default C++ HLLD task with detailed solver guidance in spec.
 - `cpp-hlld-01/`: variant C++ HLLD task with reduced guidance but same test intent.
-- `cpp-full-solver1d/`: C++ full 1D ideal MHD solver (Brio-Wu benchmark).
+- `cpp-full1d-00/`: easiest C++ full 1D ideal MHD variant (main+HLLD provided, solver scaffolded).
 - `shared/eval/README.md`: hidden-eval contract for shared MHD scoring assets.
 - `shared/eval/mhd1d_shared.py`: shared helpers for CSV loading, score
   windows, and comparison metadata.
-- `shared/eval/fixtures/mhd1d/`: hidden fixtures for `cpp-full-solver1d`.
+- `shared/eval/fixtures/mhd1d/`: hidden fixtures for full 1D variants.
 
 ## Notes
 
@@ -23,10 +23,10 @@ This suite contains benchmark tasks for ideal magnetohydrodynamics solvers.
   `hlld_flux_from_primitive(...)` in the public task API.
 - `cpp-hlld-00` and `cpp-hlld-01` keep public/hidden test intent aligned;
   the main difference is prompt detail level.
-- `cpp-full-solver1d` scores only the interior cells, excluding two
-  edge-adjacent cells on each side, against the variables `rho`, `u`, `p`, and
-  `by` using fixture-recorded `abs_l1` and `abs_linf` tolerances. The solver
-  uses hardcoded Brio-Wu defaults and emits CSV with lowercase magnetic-field
+- `cpp-full1d-00` public tests compare solver CSV output against a golden file
+  with numeric tolerance (`1.0e-12`), and hidden tests use `nx=200` against a
+  hidden reference CSV with the same numeric policy.
+- Full 1D tasks score interior cells and emit CSV with lowercase magnetic-field
   headers (`by`, `bz`).
 
 ## Reference credit

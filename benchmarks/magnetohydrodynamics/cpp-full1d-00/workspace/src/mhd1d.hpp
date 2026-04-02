@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <utility>
 #include <vector>
 
 #include <experimental/mdspan>
@@ -15,8 +14,8 @@ constexpr int N_Component = 7;
 constexpr int N_margin    = 1;
 
 using StateVector = std::array<double, N_Component>;
-using ArrayView1D = stdex::mdspan<double, stdex::dextents<int, 1>>;
-using ArrayView2D = stdex::mdspan<double, stdex::dextents<int, 2>>;
+using ArrayView1D = stdex::mdspan<double, stdex::dextents<int, 1>, stdex::layout_right>;
+using ArrayView2D = stdex::mdspan<double, stdex::dextents<int, 2>, stdex::layout_right>;
 
 struct SolverWorkspace {
   explicit SolverWorkspace(int nx, double gamma, double bx)
@@ -80,11 +79,13 @@ private:
   Storage storage;
 };
 
-StateVector primitive_to_conservative(const StateVector& primitive, double bx, double gamma);
+void primitive_to_conservative(const double* primitive, double* conservative, double bx,
+                               double gamma);
 
-StateVector conservative_to_primitive(const StateVector& conservative, double bx, double gamma);
+void conservative_to_primitive(const double* conservative, double* primitive, double bx,
+                               double gamma);
 
-void primitive_profile_to_conservative(ArrayView2D primitive_cells, ArrayView2D conservative_cells,
+void convert_primitive_to_conservative(ArrayView2D primitive_cells, ArrayView2D conservative_cells,
                                        double bx, double gamma);
 
 void set_boundary_lb(ArrayView2D dst, ArrayView2D src, int lbx);
@@ -93,10 +94,7 @@ void set_boundary_ub(ArrayView2D dst, ArrayView2D src, int ubx);
 
 void set_boundary(ArrayView2D dst, ArrayView2D src, int lbx, int ubx);
 
-StateVector hlld_flux_from_primitive(const StateVector& left, const StateVector& right, double bx,
-                                     double gamma);
-
-void reconstruct_mc2(SolverWorkspace& workspace);
+void compute_lr(SolverWorkspace& workspace);
 
 void compute_flux_hlld(SolverWorkspace& workspace, double bx, double gamma);
 
