@@ -85,7 +85,14 @@ class TestParseTaskRefAdversarial(unittest.TestCase):
     def test_root_mapping_case_insensitive(self):
         """Attack: Root mappings should be case-insensitive per the code."""
         bench_cases = ("BENCH", "bench", "BeNcH", "benchmark", "BENCHMARK")
-        test_cases = ("TEST", "test", "TeSt", "test-task", "TEST-TASK", "test-tasks")
+        test_cases = (
+            "TEST",
+            "test",
+            "TeSt",
+            "test-task",
+            "TEST-TASK",
+            "tests/test-tasks",
+        )
 
         for root in bench_cases:
             with self.subTest(root=root):
@@ -235,7 +242,7 @@ class TestTaskRootMap(unittest.TestCase):
             "benchmark",
             "test",
             "test-task",
-            "test-tasks",
+            "tests/test-tasks",
         }
         self.assertEqual(set(root_map.keys()), expected_keys)
 

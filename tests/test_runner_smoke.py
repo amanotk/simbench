@@ -98,9 +98,7 @@ class TestOpenCodeSmoke(SmokeTestHelpers, unittest.TestCase):
             test_task_root = td_path / "test-tasks"
             runs_root = td_path / "runs"
             agents_default_path = td_path / "agents_default.toml"
-            task_src = (
-                Path(__file__).resolve().parents[1] / "test-tasks" / "smoke" / "py"
-            )
+            task_src = Path(__file__).resolve().parent / "test-tasks" / "smoke" / "py"
             task_dir = test_task_root / "smoke" / "py"
             shutil.copytree(task_src, task_dir)
 

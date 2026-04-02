@@ -50,7 +50,7 @@ def _task_root_map(bench_root: Path, test_task_root: Path) -> dict[str, Path]:
         "benchmark": bench_root,
         "test": test_task_root,
         "test-task": test_task_root,
-        "test-tasks": test_task_root,
+        "tests/test-tasks": test_task_root,
     }
 
 

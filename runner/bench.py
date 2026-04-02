@@ -15,7 +15,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCH_ROOT = REPO_ROOT / "benchmarks"
-TEST_TASK_ROOT = REPO_ROOT / "test-tasks"
+TEST_TASK_ROOT = REPO_ROOT / "tests" / "test-tasks"
 RUNS_ROOT = REPO_ROOT / "runs"
 AGENTS_DEFAULT_PATH = REPO_ROOT / "agents_default.toml"
 

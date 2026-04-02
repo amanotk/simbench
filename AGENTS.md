@@ -16,7 +16,7 @@ Repo map (core):
 - `benchmarks/<suite>/<task_id>/task.toml`: task metadata for the runner
 - `benchmarks/<suite>/<task_id>/workspace/`: template copied into a fresh per-run workdir
 - `benchmarks/<suite>/<task_id>/eval/`: evaluation harness (should be hidden from the model)
-- `test-tasks/<suite>/<task_id>/`: smoke and E2E support tasks runnable through the CLI via `test:<suite>/<task_id>`
+- `tests/test-tasks/<suite>/<task_id>/`: smoke and E2E support tasks runnable through the CLI via `test:<suite>/<task_id>`
 - `runner/bench.py`: CLI (list/check/prepare/shell/run/eval)
 - `agents_default.toml`: default multi-agent config (opencode/codex/claude/copilot)
 - `sample/*.toml`: sample single-agent overrides

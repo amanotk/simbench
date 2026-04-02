@@ -3,8 +3,8 @@
 This guide is for benchmark authors who want to create new tasks.
 
 Real benchmark tasks live under `benchmarks/`. Test-only smoke or E2E support
-tasks should live under `test-tasks/` instead. Run them explicitly with a task
-reference like `test:smoke/py` to avoid ambiguity with real benchmarks.
+tasks should live under `tests/test-tasks/` instead. Run them explicitly with a
+task reference like `test:smoke/py` to avoid ambiguity with real benchmarks.
 
 
 ## 10-minute quickstart

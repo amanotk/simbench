@@ -143,7 +143,7 @@ class TestBenchHelperAdversarial(unittest.TestCase):
     def test_parse_task_ref_adversarial_benchmark_root_map_spoofing(self):
         """Adversarial: Root key mapping spoofing attempts."""
         # Valid root keys
-        valid_keys = ["bench", "benchmark", "test", "test-task", "test-tasks"]
+        valid_keys = ["bench", "benchmark", "test", "test-task", "tests/test-tasks"]
         for key in valid_keys:
             result = bench._parse_task_ref(f"{key}: s/t")
             self.assertIsNotNone(result)

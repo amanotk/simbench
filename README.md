@@ -77,7 +77,7 @@ Run a task:
 python3 runner/bench.py run sample/opencode.toml demo/py --image simbench:0.1
 ```
 
-Run the tiny OpenCode smoke task (kept under `test-tasks/`, not `benchmarks/`):
+Run the tiny OpenCode smoke task (kept under `tests/test-tasks/`, not `benchmarks/`):
 
 ```bash
 python3 runner/bench.py run tests/fixtures/agent_configs/opencode-smoke.toml test:smoke/py --image simbench:0.1
@@ -121,7 +121,7 @@ run artifacts and the publication workflow.
 ## Repository Layout
 
 - `benchmarks/<suite>`: benchmark suites
-- `test-tasks/<suite>`: smoke and E2E support tasks
+- `tests/test-tasks/<suite>`: smoke and E2E support tasks
 - `docs/`: documentation
 - `runner/bench.py`: runner CLI
 - `agents_default.toml`: default agent config
