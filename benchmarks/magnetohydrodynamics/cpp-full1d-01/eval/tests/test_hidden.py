@@ -6,7 +6,7 @@ from pathlib import Path
 from mhd1d_shared import TOLERANCE, assert_csv_rows_close
 
 SOLVER_TARGET = "cpp_full_solver1d"
-WORKSPACE_ROOT = Path("/work/workspace")
+WORKSPACE_ROOT = Path("/work")
 REFERENCE_CSV_PATH = (
     Path("/eval_shared") / "fixtures" / "mhd1d" / "brio_wu_reference.csv"
 )
